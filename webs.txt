@@ -1,0 +1,3 @@
+https://haythamfayek.com/2016/04/21/speech-processing-for-machine-learning.html
+https://discuss.pytorch.org/t/per-channel-normalization-layer-implementation/3169/3
+https://github.com/mrhuke/GMM-adaptation/blob/master/qbgmm.py
