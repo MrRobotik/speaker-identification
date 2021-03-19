@@ -1,3 +1,6 @@
 https://haythamfayek.com/2016/04/21/speech-processing-for-machine-learning.html
 https://discuss.pytorch.org/t/per-channel-normalization-layer-implementation/3169/3
 https://github.com/mrhuke/GMM-adaptation/blob/master/qbgmm.py
+https://pypi.org/project/webrtcvad/
+https://pykaldi.github.io/api/kaldi.ivector.html
+https://www.idiap.ch/software/bob/docs/bob/bob.kaldi/master/index.html
