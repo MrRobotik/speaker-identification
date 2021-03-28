@@ -1,20 +1,61 @@
-import os, sys
+import sys, os
 import numpy as np
 from scipy.io import wavfile
 import utils
 
-import matplotlib.pyplot as plt
-import librosa.display
+HELP = \
+    "Extract Mel filter-banks and MFCC features from *.wav files.\n" \
+    "Usage: extract_feats.py in_dir out_dir\n"
+
+
+def extract_feats(filepath):
+    sr, data = wavfile.read(filepath, False)
+    if data.dtype != np.float32:
+        if data.dtype == np.uint8:
+            data = data.astype(np.float32) / 127.0 - 1.0
+        else:
+            data = data.astype(np.float32) / (-np.iinfo(data.dtype).min)
+    sr, data = utils.preproc_audio(data, sr)
+    fbanks = utils.extract_fbanks(data, sr, frame_size=25, frame_step=15, n_mels=128)
+    mfcc = utils.extract_mfcc(data, sr, frame_size=25, frame_step=15, n_mfcc=24, fbanks=fbanks)
+    fbanks = utils.mean_normalize(fbanks, win_size=200)
+    mfcc = utils.mean_normalize(mfcc, win_size=200)
+    return fbanks, mfcc
+
+
+def main():
+    if len(sys.argv) != 3:
+        print(HELP), exit(0)
+    src_root = sys.argv[1]
+    dst_root = sys.argv[2]
+    counter = 1
+    for speaker_id in os.listdir(src_root):
+        src_dir = src_root + os.sep + speaker_id
+        dst_dir = dst_root + os.sep + speaker_id
+        try:
+            os.mkdir(dst_dir)
+        except FileExistsError as e:
+            print(e, file=sys.stderr)
+            continue
+        for source_id in os.listdir(src_dir):
+            src_subdir = src_dir + os.sep + source_id
+            dst_subdir = dst_dir + os.sep + source_id
+            try:
+                os.mkdir(dst_subdir)
+            except FileExistsError as e:
+                print(e, file=sys.stderr)
+                continue
+            for fn in os.listdir(src_subdir):
+                i_filepath = src_subdir + os.sep + fn
+                o_filepath = dst_subdir + os.sep + fn
+                print('processing: {}'.format(i_filepath))
+                fbanks, mfcc = extract_feats(i_filepath)
+                o_filepath = o_filepath[:o_filepath.rfind(os.extsep)]
+                np.save(o_filepath + '-fbanks.npy', fbanks)
+                np.save(o_filepath + '-mfcc.npy',   mfcc)
+                print('done ({})'.format(counter))
+                counter += 1
 
 
 if __name__ == '__main__':
-    sr, data = wavfile.read('/home/adam/Desktop/00001.wav', False)
-    data = data.astype(np.float32) / (-np.iinfo(data.dtype).min)
-    data, sr = utils.preproc_audio(data, sr)
-    f = utils.extract_fbanks(data, sr, 25, 15, 128)
-    # f = utils.extract_mfcc(data, sr, 25, 15, 20)
-    # librosa.display.specshow(np.pad(f, ((0, 0), (10, 10)), mode='reflect'))
-    # librosa.display.specshow(f - np.mean(f, axis=1)[:, np.newaxis])
-    librosa.display.specshow(utils.mean_normalize(f, 48000))
-    plt.show()
-    print(f.shape)
+    main()
