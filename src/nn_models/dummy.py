@@ -7,3 +7,4 @@ class Dummy(torch.nn.Module):
 
     def forward(self, x):
         pass
+

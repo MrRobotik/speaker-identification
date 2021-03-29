@@ -54,3 +54,4 @@ def energy_based_vad(frames, context=5):
         if np.count_nonzero(mask[i-context:i+context]):
             mask[i] = 1
     return frames[:, np.nonzero(mask)[0]]
+
