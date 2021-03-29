@@ -44,7 +44,7 @@ def mean_normalize(frames, win_size):
     return y
 
 
-def energy_based_vad(frames, context=25):
+def energy_based_vad(frames, context=10):
     eps = np.finfo(np.float32).eps
     energy = 10 * np.log(np.sum(frames, axis=0) + eps)
     emin, emax = np.min(energy), np.max(energy)
