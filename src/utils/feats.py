@@ -20,8 +20,8 @@ def extract_fbanks(data, sr, frame_size, frame_step, n_mels, use_vad=True):
     frames = np.abs(librosa.stft(data, n_fft, hop_l, win_l, window='hann', center=True))
     if use_vad:
         frames = energy_based_vad(frames)
-    eps = np.finfo(float).eps
-    power = 20 * np.log(float(mel_f.dot(frames ** 2)) + eps)
+    eps = np.finfo(np.float32).eps
+    power = 20 * np.log(mel_f.dot(frames ** 2) + eps)
     return power
 
 
@@ -45,8 +45,8 @@ def mean_normalize(frames, win_size):
 
 
 def energy_based_vad(frames, context=25):
-    eps = np.finfo(float).eps
-    energy = 10 * np.log(float(np.sum(frames, axis=0)) + eps)
+    eps = np.finfo(np.float32).eps
+    energy = 10 * np.log(np.sum(frames, axis=0) + eps)
     emin, emax = np.min(energy), np.max(energy)
     lower_m = energy > (emin + (emax - emin) * 0.25)
     upper_m = energy > (emin + (emax - emin) * 0.50)

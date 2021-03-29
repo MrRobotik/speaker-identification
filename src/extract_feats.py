@@ -14,7 +14,7 @@ def extract_feats(filepath):
         if data.dtype == np.uint8:
             data = data.astype(np.float32) / 127.0 - 1.0
         else:
-            data = data.astype(np.float32) / (-np.iinfo(data.dtype).min)
+            data = data.astype(np.float32) / (np.iinfo(data.dtype).max + 1)
     sr, data = utils.preproc_audio(data, sr)
     frame_size = 25
     frame_step = 15
