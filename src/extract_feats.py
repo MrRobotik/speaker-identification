@@ -16,10 +16,13 @@ def extract_feats(filepath):
         else:
             data = data.astype(np.float32) / (-np.iinfo(data.dtype).min)
     sr, data = utils.preproc_audio(data, sr)
-    fbanks = utils.extract_fbanks(data, sr, frame_size=25, frame_step=15, n_mels=128)
-    mfcc = utils.extract_mfcc(data, sr, frame_size=25, frame_step=15, n_mfcc=24, fbanks=fbanks)
-    fbanks = utils.mean_normalize(fbanks, win_size=200)
-    mfcc = utils.mean_normalize(mfcc, win_size=200)
+    frame_size = 25
+    frame_step = 15
+    fbanks = utils.extract_fbanks(data, sr, frame_size, frame_step, n_mels=128)
+    mfcc = utils.extract_mfcc(data, sr, frame_size, frame_step, n_mfcc=24, fbanks=fbanks)
+    norm_win_size = 200
+    fbanks = utils.mean_normalize(fbanks, norm_win_size)
+    mfcc = utils.mean_normalize(mfcc, norm_win_size)
     return fbanks, mfcc
 
 
