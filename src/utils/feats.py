@@ -1,5 +1,6 @@
 import numpy as np
 import librosa
+import collections
 
 
 def preproc_audio(data, sr):
@@ -42,16 +43,23 @@ def mean_normalize(frames, win_size):
     return y
 
 
-def energy_based_vad(frames, context=5):
+def energy_based_vad(frames, context=25):
     energy = 10 * np.log(np.sum(frames, axis=0))
     emin, emax = np.min(energy), np.max(energy)
-    lower_tr = emin + (emax - emin)/4
-    upper_tr = emin + (emax - emin)/2
-    mask = energy > upper_tr
-    for i in np.nonzero(energy > lower_tr)[0]:
-        if mask[i]:
-            continue
-        if np.count_nonzero(mask[i-context:i+context]):
-            mask[i] = 1
-    return frames[:, np.nonzero(mask)[0]]
+    lower_m = energy > (emin + (emax - emin) * 0.25)
+    upper_m = energy > (emin + (emax - emin) * 0.50)
+    speech_inds = list(np.nonzero(upper_m)[0])
+    queue = collections.deque()
+    for i in speech_inds:
+        queue.append(i)
+    while len(queue) > 0:
+        i = queue.popleft()
+        a = max(0, i - context)
+        b = min(i + context, len(energy) - 1)
+        for j in np.nonzero(lower_m[a:b])[0] + a:
+            if not upper_m[j]:
+                queue.append(j)
+                speech_inds.append(j)
+                upper_m[j] = True
+    return frames[:, sorted(speech_inds)]
 
