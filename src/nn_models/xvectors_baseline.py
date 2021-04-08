@@ -125,9 +125,11 @@ def processing_run(best_accuracy, device, epoch, epochs, model, params_loc, run_
 def train_model(model, params_loc, epochs, run_mb_num, train_dataloader, val_dataloader, optimizer, criterion, device):
     runs_num = max(ceil(len(train_dataloader) / run_mb_num), 1)
     best_accuracy = compute_accuracy(model, val_dataloader, device)
-    print(f"Initial accuracy on validation set: {best_accuracy}%")
+    print(f"Initial accuracy on validation set: {best_accuracy}%\n")
 
     for epoch in range(1, epochs + 1, 1):
+        print(f"START OF EPOCH: {epoch}/{epochs}")
+
         run_id = 1
         run_processed_mb = 0
         epoch_loss = run_loss = 0.0
@@ -163,12 +165,12 @@ def train_model(model, params_loc, epochs, run_mb_num, train_dataloader, val_dat
 
         epoch_loss = round(epoch_loss / len(train_dataloader), 3)
         epoch_duration = round(epoch_end - epoch_start, 3)
-        print(f"EPOCH: {epoch}/{epochs}, "
-              f"AVG.M.B. LOSS: {epoch_loss}, "
-              f"DURATION: {epoch_duration}s")
+        print(f"END OF EPOCH: {epoch}/{epochs}, "
+              f"DURATION: {epoch_duration}s, "
+              f"AVG.M.B. LOSS: {epoch_loss}\n")
 
 
-# CALCULATING AVG SESSION XVECTORS FOR EVERY SPEAKER IN TESTING DATASET
+# CALCULATING AVG SESSION XVECTORS FOR EVERY SPEAKER IN TESTING DATASET (functions used only in jupyter notebook)
 
 def get_avg_xvector(model, dataloader, device):
     avg_xvectors = torch.Tensor().to(device)
