@@ -1,12 +1,14 @@
+import time
 import torch
+import argparse
+import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader, ConcatDataset
-import time
-import numpy as np
+from math import ceil
 from os import listdir
 from pathlib import Path
+from torch.utils.data import Dataset, DataLoader, ConcatDataset, random_split
 
 
 # TRAINING DATASET CONSTRUCTION:
@@ -27,8 +29,7 @@ class MFCCDataset(Dataset):
     def __getitem__(self, idx):
         start_idx = idx * self.chunk_size
         end_idx = start_idx + self.chunk_size
-        truncated_mfcc = self.mfcc[start_idx:end_idx, :]
-        return truncated_mfcc.view(self.chunk_size, self.attr_len), self.speaker_label
+        return self.mfcc[start_idx:end_idx, :], self.speaker_label
 
 
 def create_training_mfcc_dataset(data_folder, chunk_size=24):
@@ -99,12 +100,40 @@ def compute_accuracy(model, dataloader, device):
     return round(n_correct / n_samples * 100, 3)
 
 
-def train_model(model, params_location, epochs_num, train_dataloader, optimizer, criterion, device):
-    for epoch in range(epochs_num):
-        epoch_loss = 0.0
-        start_time = time.time()
+def processing_run(best_accuracy, device, epoch, epochs, model, params_loc, run_id, run_loss, run_processed_mb,
+                   run_start, runs_num, val_dataloader):
+    run_end = time.time()
+    run_accuracy = compute_accuracy(model, val_dataloader, device)
+    run_duration = round(run_end - run_start, 3)
 
-        for mb, (inputs, labels) in enumerate(train_dataloader):
+    print(f"epoch: {epoch}/{epochs}, "
+          f"run: {run_id}/{runs_num}, "
+          f"processed m.b.: {run_processed_mb}, "
+          f"avg.m.b. loss:  {round(run_loss / run_processed_mb, 3)}, "
+          f"accuracy: {run_accuracy}%, "
+          f"duration: {run_duration}s")
+
+    if run_accuracy > best_accuracy:
+        increase = round(run_accuracy - best_accuracy, 3)
+        best_accuracy = run_accuracy
+        torch.save(model.state_dict(), params_loc)
+        print(f"Accuracy on validation set has been increased by {increase}%. Model parameters were resaved!")
+
+    return best_accuracy
+
+
+def train_model(model, params_loc, epochs, run_mb_num, train_dataloader, val_dataloader, optimizer, criterion, device):
+    runs_num = max(ceil(len(train_dataloader) / run_mb_num), 1)
+    best_accuracy = compute_accuracy(model, val_dataloader, device)
+    print(f"Initial accuracy on validation set: {best_accuracy}%")
+
+    for epoch in range(1, epochs + 1, 1):
+        run_id = 1
+        run_processed_mb = 0
+        epoch_loss = run_loss = 0.0
+        epoch_start = run_start = time.time()
+
+        for mb, (inputs, labels) in enumerate(train_dataloader, 1):
             inputs = inputs.to(device)
             labels = labels.to(device)
 
@@ -112,19 +141,34 @@ def train_model(model, params_location, epochs_num, train_dataloader, optimizer,
             _, outputs = model(inputs)
             loss = criterion(outputs, labels)
             epoch_loss += loss.item()
+            run_loss += loss.item()
             loss.backward()
             optimizer.step()
 
-        end_time = time.time()
+            run_processed_mb += 1
 
-        accuracy = compute_accuracy(model, train_dataloader, device)
-        print(f"Epoch {epoch}: loss: {epoch_loss}, accuracy: {accuracy}, duration: {round(end_time - start_time, 3)}s")
+            if mb % run_mb_num == 0:
+                best_accuracy = processing_run(best_accuracy, device, epoch, epochs, model, params_loc, run_id,
+                                               run_loss, run_processed_mb, run_start, runs_num, val_dataloader)
+                run_processed_mb = 0
+                run_loss = 0
+                run_id += 1
+                run_start = time.time()
 
-        torch.save(model.state_dict(), params_location)
-        print(f"Model params were resaved!\n")
+        epoch_end = time.time()
+
+        if run_processed_mb != 0:
+            processing_run(best_accuracy, device, epoch, epochs, model, params_loc, run_id, run_loss, run_processed_mb,
+                           run_start, runs_num, val_dataloader)
+
+        epoch_loss = round(epoch_loss / len(train_dataloader), 3)
+        epoch_duration = round(epoch_end - epoch_start, 3)
+        print(f"EPOCH: {epoch}/{epochs}, "
+              f"AVG.M.B. LOSS: {epoch_loss}, "
+              f"DURATION: {epoch_duration}s")
 
 
-# CALCULATING AVG SESSION XVECTORS FROM TRAINED MODEL (this functions are used only in jupyter notebook):
+# CALCULATING AVG SESSION XVECTORS FOR EVERY SPEAKER IN TESTING DATASET
 
 def get_avg_xvector(model, dataloader, device):
     avg_xvectors = torch.Tensor().to(device)
@@ -139,8 +183,8 @@ def get_avg_xvector(model, dataloader, device):
 
 
 def get_session_xvectors(model, data_folder, chunk_size, batch_size, device):
-    xvectors = []
-    labels = []
+    session_xvectors = []
+    speaker_labels = []
     speaker_label = 0
 
     for speaker_folder in listdir(data_folder):
@@ -154,24 +198,48 @@ def get_session_xvectors(model, data_folder, chunk_size, batch_size, device):
 
             test_dataset = ConcatDataset(datasets_list)
             test_dataloader = DataLoader(dataset=test_dataset, batch_size=batch_size)
-            xvectors.append(get_avg_xvector(model, test_dataloader, device))
-            labels.append(speaker_label)
+            session_xvectors.append(get_avg_xvector(model, test_dataloader, device))
+            speaker_labels.append(speaker_label)
 
         speaker_label += 1
 
-    return xvectors, labels
+    return session_xvectors, speaker_labels
 
 
 # MAIN:
+def arg_parser():
+    parser = argparse.ArgumentParser(description="Script for training XVectors baseline architecture. "
+                                     "Example of running script:"
+                                     "python3  src/nn_models/xvectors_baseline.py -t data/vox1_dev/ -p model_params.pt")
+
+    parser.add_argument('-t', '--train_data', required=True, help="Train data location (required)")
+    parser.add_argument('-p', '--params', required=True, help="Parameters  of model location (required)")
+
+    parser.add_argument('-v', '--val_proportion', type=float, nargs='?', default=0.15, help="Proportion of training "
+                        "data, which should be used for validation (default: 0.15, min: 0.1, max: 0.5)")
+    parser.add_argument('-c', '--chunks', type=int, nargs='?', default=24, help="Number of consecutive "
+                        "parts of speaker recording (one part 25ms) processed by initial 1D conv layer (default: 24)")
+    parser.add_argument('-e', '--epochs', type=int, nargs='?', default=10, help="Number of training epochs (default: 10)")
+    parser.add_argument('-b', '--batch_size', type=int, nargs='?', default=1024, help="Mini-batch size (default: 1024)")
+    parser.add_argument('-m', '--mb_in_run', type=int, nargs='?', default=100, help="Number of mini-batches in one "
+                                                                                    "training run (default: 100)")
+    args = parser.parse_args()
+    return args
+
 
 def main():
-    # training configuration:
-    training_data = Path("/home/joey/School/KNN/speaker-identification/data/vox1_dev/")
-    model_params = Path("/home/joey/School/KNN/speaker-identification/model_params.pt")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    epochs = 10
-    batch_size = 2048
-    chunk_size = 24
+    args = arg_parser()
+
+    # training configuration:
+    training_data = Path(args.train_data)
+    model_params = Path(args.params)
+    val_proportion = args.val_proportion
+    val_proportion = 0.15 if val_proportion < 0.1 or val_proportion > 0.5 else val_proportion
+    chunk_size = args.chunks
+    epochs = args.epochs
+    batch_size = args.batch_size
+    mb_in_run = args.mb_in_run
 
     # model declaration:
     speakers_count = len(listdir(training_data))
@@ -185,12 +253,16 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters())
 
-    # create training dataset and dataloader:
-    train_dataset = create_training_mfcc_dataset(training_data, chunk_size)
+    # create training and validation dataset and dataloader:
+    dataset = create_training_mfcc_dataset(training_data, chunk_size)
+    val_count = int(val_proportion * len(dataset))
+    train_count = len(dataset) - val_count
+    train_dataset, val_dataset = random_split(dataset, [train_count, val_count])
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True)
+    val_dataloader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=True)
 
     # calling train model function:
-    train_model(model, model_params, epochs, train_dataloader, optimizer, criterion, device)
+    train_model(model, model_params, epochs, mb_in_run, train_dataloader, val_dataloader, optimizer, criterion, device)
 
 
 if __name__ == '__main__':
