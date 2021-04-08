@@ -117,7 +117,7 @@ def processing_run(best_accuracy, device, epoch, epochs, model, params_loc, run_
         increase = round(run_accuracy - best_accuracy, 3)
         best_accuracy = run_accuracy
         torch.save(model.state_dict(), params_loc)
-        print(f"Accuracy on validation set has been increased by {increase}%. Model parameters were resaved!")
+        print(f"*Accuracy on validation set has been increased by {increase}%. Model parameters were resaved!*")
 
     return best_accuracy
 
