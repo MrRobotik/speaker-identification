@@ -1,7 +1,4 @@
 import numpy as np
+from utils import DatasetBase
 
-# TODO: bude pocitat "confusion matrix" a z neho EER a DCF
-class Evaluator(Object):
-    def __init__(self):
-        pass
 

@@ -19,6 +19,7 @@ def extract_fbanks(data, sr, frame_size, frame_step, n_mels, use_vad=True):
     mel_f = librosa.filters.mel(sr, n_fft, n_mels, norm='slaney')
     frames = np.abs(librosa.stft(data, n_fft, hop_l, win_l, window='hann', center=True))
     if use_vad:
+        # simple energy based VAD enhanced with hysteresis:
         frames = energy_based_vad(frames)
     eps = np.finfo(np.float32).eps
     power = 20 * np.log(mel_f.dot(frames ** 2) + eps)
@@ -64,4 +65,3 @@ def energy_based_vad(frames, context=10):
                 speech_inds.append(j)
                 upper_m[j] = True
     return frames[:, sorted(speech_inds)]
-

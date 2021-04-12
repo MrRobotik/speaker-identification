@@ -4,3 +4,4 @@ https://github.com/mrhuke/GMM-adaptation/blob/master/qbgmm.py
 https://pypi.org/project/webrtcvad/
 https://pykaldi.github.io/api/kaldi.ivector.html
 https://www.idiap.ch/software/bob/docs/bob/bob.kaldi/master/index.html
+https://www.idiap.ch/software/bob/

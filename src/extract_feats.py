@@ -16,10 +16,11 @@ def extract_feats(filepath):
         else:
             data = data.astype(np.float32) / (np.iinfo(data.dtype).max + 1)
     sr, data = utils.preproc_audio(data, sr)
-    frame_size = 25
-    frame_step = 15
+    frame_size = 25  # 25 milliseconds frames
+    frame_step = 15  # 15 milliseconds step between frames
     fbanks = utils.extract_fbanks(data, sr, frame_size, frame_step, n_mels=128)
     mfcc = utils.extract_mfcc(data, sr, frame_size, frame_step, n_mfcc=24, fbanks=fbanks)
+    # 3 seconds window mean normalization:
     norm_win_size = 200
     fbanks = utils.mean_normalize(fbanks, norm_win_size)
     mfcc = utils.mean_normalize(mfcc, norm_win_size)
@@ -62,4 +63,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
