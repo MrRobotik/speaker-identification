@@ -4,8 +4,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from pathlib import Path
-from sklearn.metrics.pairwise import cosine_similarity
-import bob.measure as measure
 
 from nn_models import XVectorsBaseline
 from utils import DatasetBase
@@ -19,9 +17,17 @@ class TrainDataset(DatasetBase):
         super().__init__(data_folder, feats_type)
         self.batch_size = batch_size
         self.device = device
+        self.cross_val_indices = []
+        for utters in self.speaker_data:
+            i = utters[0]
+            self.cross_val_indices.append(i)
+        cvis = set(self.cross_val_indices)
+        self.train_indices = [i for i in range(len(self.data)) if i not in cvis]
+        self.cross_val_indices = np.asarray(self.cross_val_indices)
+        self.train_indices = np.asarray(self.train_indices)
 
     def __iter__(self):
-        indices = np.random.permutation(np.arange(0, len(self.data)))
+        indices = np.random.permutation(self.train_indices)
         for batch_start in range(0, len(indices), self.batch_size):
             batch_end = batch_start + self.batch_size
             inputs = []
@@ -38,97 +44,78 @@ class TrainDataset(DatasetBase):
                 labels.append(t)
             yield inputs, labels
 
-
-class EvalDataset(DatasetBase):
-
-    def __init__(self, data_folder, feats_type, device):
-        super().__init__(data_folder, feats_type)
-        self.device = device
-
-    def load(self):
-        inputs1 = []
-        inputs2 = []
+    def cross_val(self):
         labels = []
-        for t in range(len(self.data_mapping)):
-            i1, i2 = np.random.randint(0, len(self.data_mapping[t]), size=2)
-            path1, _ = self.data[self.data_mapping[t][i1]]
-            path2, _ = self.data[self.data_mapping[t][i2]]
+        inputs = []
+        for i in self.cross_val_indices:
+            path, t = self.data[i]
             try:
-                x1 = torch.FloatTensor(np.expand_dims(np.load(path1), axis=0))
-                x2 = torch.FloatTensor(np.expand_dims(np.load(path2), axis=0))
+                x = torch.FloatTensor(np.expand_dims(np.load(path), axis=0))
             except Exception:
                 continue
-            if x1.size()[1] < 15 or x2.size()[1] < 15:
-                continue
-            inputs1.append(x1.to(self.device))
-            inputs2.append(x2.to(self.device))
+            inputs.append(x.to(self.device))
             labels.append(t)
-        return inputs1, inputs2, labels
+        return inputs, labels
 
 
 # TRAINING MODEL:
 
-def compute_accuracy(model, eval_dataset):
+def cross_validate(model, dataset):
     model.eval()
     with torch.no_grad():
-        inputs1, inputs2, labels = eval_dataset.load()
-        out1 = model(inputs1)[0].cpu().detach().numpy()
-        out2 = model(inputs2)[0].cpu().detach().numpy()
-        scores = cosine_similarity(out1, out2)
-        mask = np.eye(len(labels)).ravel()
-        pos = scores.ravel()[np.nonzero(mask == 1)[0]].astype(np.float64)
-        neg = scores.ravel()[np.nonzero(mask == 0)[0]].astype(np.float64)
-        eer = measure.eer(neg, pos)
+        inputs, labels = dataset.cross_val()
+        _, outputs = model(inputs)
+        loss = F.cross_entropy(outputs.cpu(), torch.tensor(labels))
     model.train()
-    return eer
+    return float(loss)
 
 
-def train_model(model, params_path, epochs, mb_in_run, train_dataset, eval_dataset, optimizer, device):
+def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, device):
 
-    best_eer = compute_accuracy(model, eval_dataset)
-    print(f'Initial EER est.: {best_eer} %\n')
-    batch_total = int(np.ceil(len(train_dataset) / train_dataset.batch_size))
+    best_c_val_loss = cross_validate(model, dataset)
+    print(f'Initial cross-val loss: {best_c_val_loss}\n')
+    batch_total = int(np.ceil(len(dataset) / dataset.batch_size))
 
     for epoch in range(1, epochs + 1, 1):
         print(f'START OF EPOCH: {epoch}/{epochs}')
         epoch_start = run_start = time.time()
-        epoch_loss = 0.0
+
+        train_loss = 0.0
         batch_count = 0
 
-        for inputs, labels in train_dataset:
+        for inputs, labels in dataset:
 
             _, outputs = model(inputs)
             loss = F.cross_entropy(outputs, torch.tensor(labels).to(device))
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-
-            epoch_loss += float(loss)
+            train_loss += float(loss)
             batch_count += 1
 
             if batch_count % mb_in_run == 0:
-                eer = compute_accuracy(model, eval_dataset)
+                c_val_loss = cross_validate(model, dataset)
                 run_duration = round(time.time() - run_start, 3)
                 print(f'epoch: {epoch}/{epochs}, '
                       f'processed m.b.: {batch_count}/{batch_total}, '
-                      f'avg.m.b. loss: {round(epoch_loss / batch_count, 6)}, '
-                      f'EER est.: {round(100 * eer, 3)} %, '
+                      f'train. loss: {round(train_loss / mb_in_run, 6)}, '
+                      f'cross-val. loss: {round(c_val_loss, 6)}, '
                       f'duration: {run_duration}s')
-                if eer < best_eer:
+                train_loss = 0.0
+
+                if c_val_loss < best_c_val_loss:
                     torch.save(model.state_dict(), params_path)
-                    best_eer = eer
+                    best_c_val_loss = c_val_loss
                 run_start = time.time()
 
         epoch_duration = round(time.time() - epoch_start, 3)
         print(f'END OF EPOCH: {epoch}/{epochs}, '
-              f'DURATION: {epoch_duration}s, '
-              f'AVG.M.B. LOSS: {round(epoch_loss / batch_count, 6)}\n')
+              f'DURATION: {epoch_duration}s')
 
 
 def arg_parser():
-    parser = argparse.ArgumentParser(description='Script for training XVectors baseline architecture. ')
-    parser.add_argument(      '--train_data', required=True, help='Train data location (required)')
-    parser.add_argument(      '--eval_data', required=True, help='Evaluation data location (required)')
+    parser = argparse.ArgumentParser(description='Script for training XVectors baseline architecture.')
+    parser.add_argument('-t', '--train_data', required=True, help='Train data location (required)')
     parser.add_argument('-p', '--params', required=True, help='Parameters of model location (required)')
     parser.add_argument('-e', '--epochs', type=int, nargs='?', default=10, help='Number of training epochs (default: 10)')
     parser.add_argument('-b', '--batch_size', type=int, nargs='?', default=64, help='Mini-batch size (default: 64)')
@@ -144,7 +131,6 @@ def main():
 
     # training configuration:
     training_data = Path(args.train_data)
-    eval_data = Path(args.eval_data)
     params_path = Path(args.params)
     epochs = args.epochs
     batch_size = args.batch_size
@@ -153,7 +139,6 @@ def main():
     # create training dataset:
     feats_type = 'mfcc.npy'
     train_dataset = TrainDataset(training_data, feats_type, batch_size, device)
-    eval_dataset = EvalDataset(eval_data, feats_type, device)
 
     # model declaration:
     speakers_count = len(train_dataset)
@@ -167,7 +152,7 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 
     # calling train model function:
-    train_model(model, params_path, epochs, mb_in_run, train_dataset, eval_dataset, optimizer, device)
+    train_model(model, params_path, epochs, mb_in_run, train_dataset, optimizer, device)
 
 
 if __name__ == '__main__':
