@@ -38,7 +38,7 @@ class TrainDataset(DatasetBase):
                     x = torch.FloatTensor(np.expand_dims(np.load(path), axis=0))
                 except Exception:
                     continue
-                if x.size()[1] < 15:
+                if x.size()[2] < 15:
                     continue
                 inputs.append(x.to(self.device))
                 labels.append(t)
@@ -53,7 +53,7 @@ class TrainDataset(DatasetBase):
                 x = torch.FloatTensor(np.expand_dims(np.load(path), axis=0))
             except Exception:
                 continue
-            if x.size()[1] < 15:
+            if x.size()[2] < 15:
                 continue
             inputs.append(x.to(self.device))
             labels.append(t)
