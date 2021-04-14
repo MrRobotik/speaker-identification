@@ -60,7 +60,7 @@ class DatasetClasses(DatasetBase):
                     continue
                 inputs.append(x.to(self.device))
                 labels.append(t)
-            yield inputs, labels
+            yield inputs, torch.tensor(labels).to(self.device)
 
     def cross_val(self):
         labels = []
@@ -91,9 +91,8 @@ class DatasetTriplets(DatasetBase):
             j = utters[1]
             self.cross_val_indices.append((i, j))
 
-        cvis = set(self.cross_val_indices)
+        cvis = set([x for x, _ in self.cross_val_indices] + [x for _, x in self.cross_val_indices])
         self.train_indices = [i for i in range(len(self.data)) if i not in cvis]
-        self.cross_val_indices = np.asarray(self.cross_val_indices)
         self.train_indices = np.asarray(self.train_indices)
 
     def __iter__(self):
@@ -112,8 +111,8 @@ class DatasetTriplets(DatasetBase):
 
                 pos_utters = self.speaker_data[t_pos]
                 neg_utters = self.speaker_data[t_neg]
-                pos_path = self.data[pos_utters[np.random.randint(0, len(pos_utters))]]
-                neg_path = self.data[neg_utters[np.random.randint(0, len(neg_utters))]]
+                pos_path, _ = self.data[pos_utters[np.random.randint(0, len(pos_utters))]]
+                neg_path, _ = self.data[neg_utters[np.random.randint(0, len(neg_utters))]]
                 try:
                     x_anc = torch.FloatTensor(np.expand_dims(np.load(anc_path), axis=0))
                     x_pos = torch.FloatTensor(np.expand_dims(np.load(pos_path), axis=0))
@@ -127,11 +126,36 @@ class DatasetTriplets(DatasetBase):
                 if x_neg.size()[2] < self.min_sample_length:
                     continue
 
-                anchors.append(x_anc)
-                positives.append(x_pos)
-                negatives.append(x_neg)
+                anchors.append(x_anc.to(self.device))
+                positives.append(x_pos.to(self.device))
+                negatives.append(x_neg.to(self.device))
 
             yield anchors, positives, negatives
 
     def cross_val(self):
-        pass  # TODO: implement me
+        anchors = []
+        positives = []
+        negatives = []
+
+        for i in range(len(self.cross_val_indices)):
+            anc_path, _ = self.data[self.cross_val_indices[i][0]]
+            pos_path, _ = self.data[self.cross_val_indices[i][1]]
+            neg_path, _ = self.data[self.cross_val_indices[(i + 1) % len(self.cross_val_indices)][0]]
+            try:
+                x_anc = torch.FloatTensor(np.expand_dims(np.load(anc_path), axis=0))
+                x_pos = torch.FloatTensor(np.expand_dims(np.load(pos_path), axis=0))
+                x_neg = torch.FloatTensor(np.expand_dims(np.load(neg_path), axis=0))
+            except Exception:
+                continue
+            if x_anc.size()[2] < self.min_sample_length:
+                continue
+            if x_pos.size()[2] < self.min_sample_length:
+                continue
+            if x_neg.size()[2] < self.min_sample_length:
+                continue
+
+            anchors.append(x_anc.to(self.device))
+            positives.append(x_pos.to(self.device))
+            negatives.append(x_neg.to(self.device))
+
+        return anchors, positives, negatives

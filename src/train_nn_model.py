@@ -11,27 +11,41 @@ from utils import DatasetClasses, DatasetTriplets
 
 model_class_to_feats_type = {
     XVectors: 'mfcc',
-    XVectorsSoftmax: 'mfcc'
+    XVectorsSoftmax: 'mfcc',
+    XVectorsTriplet: 'mfcc'
 }
 
 model_class_to_dataset_class = {
-    XVectorsSoftmax: DatasetClasses
+    XVectorsSoftmax: DatasetClasses,
+    XVectorsTriplet: DatasetTriplets
 }
 
 
-def cross_validate(model, dataset):
+def forward_with_softmax_loss(model, inputs, labels):
+    outputs = model(inputs)
+    loss = F.cross_entropy(outputs, labels)
+    return loss
+
+
+def forward_with_triplet_loss(model, anchors, positives, negatives):
+    out_anchors = model(anchors)
+    out_positives = model(positives)
+    out_negatives = model(negatives)
+    loss = F.triplet_margin_loss(out_anchors, out_positives, out_negatives, margin=0.8)
+    return loss
+
+
+def cross_validate(model, dataset, forward_with_loss):
     model.eval()
     with torch.no_grad():
-        inputs, labels = dataset.cross_val()
-        outputs = model(inputs)
-        loss = F.cross_entropy(outputs.cpu(), torch.tensor(labels))
+        loss = forward_with_loss(model, *dataset.cross_val())
     model.train()
     return float(loss)
 
 
-def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, device):
+def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, forward_with_loss):
 
-    best_c_val_loss = cross_validate(model, dataset)
+    best_c_val_loss = cross_validate(model, dataset, forward_with_loss)
     print(f'Initial cross-val loss: {best_c_val_loss}\n')
     batch_total = int(np.ceil(len(dataset) / dataset.batch_size))
 
@@ -42,10 +56,9 @@ def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, devic
         train_loss = 0.0
         batch_count = 0
 
-        for inputs, labels in dataset:
+        for batch in dataset:
 
-            outputs = model(inputs)
-            loss = F.cross_entropy(outputs, torch.tensor(labels).to(device))
+            loss = forward_with_loss(model, *batch)
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
@@ -53,7 +66,7 @@ def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, devic
             batch_count += 1
 
             if batch_count % mb_in_run == 0:
-                c_val_loss = cross_validate(model, dataset)
+                c_val_loss = cross_validate(model, dataset, forward_with_loss)
                 run_duration = round(time.time() - run_start, 3)
                 print(f'epoch: {epoch}/{epochs}, '
                       f'processed m.b.: {batch_count}/{batch_total}, '
@@ -73,7 +86,7 @@ def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, devic
 
 
 def arg_parser():
-    parser = argparse.ArgumentParser(description='Script for training XVectors baseline architecture.')
+    parser = argparse.ArgumentParser(description='Script for training different NN models.')
     parser.add_argument('-t', '--train_data', required=True, help='Train data location (required)')
     parser.add_argument('-p', '--params', required=True, help='Parameters of model location (required)')
     parser.add_argument('-e', '--epochs', type=int, nargs='?', default=10, help='Number of training epochs (default: 10)')
@@ -101,6 +114,8 @@ def main():
 
     if args.name == 'XVectorsSoftmax':
         model_class = eval(args.name)
+    elif args.name == 'XVectorsTriplet':
+        model_class = eval(args.name)
     else:
         print('Invalid model name', file=sys.stderr)
         exit(1)
@@ -112,8 +127,7 @@ def main():
     train_dataset = dataset_class(training_data, feats_type, batch_size, device, min_sample_length)
 
     # model initialization:
-    speakers_count = train_dataset.speakers_count()
-    model = model_class(speakers_count).to(device)
+    model = model_class().to(device)
     if params_path.is_file():
         model.load_state_dict(torch.load(params_path))
         print('Model parameters were loaded!')
@@ -128,7 +142,8 @@ def main():
         exit(1)
 
     # calling train model function:
-    train_model(model, params_path, epochs, mb_in_run, train_dataset, optimizer, device)
+    forward_with_loss = forward_with_softmax_loss if dataset_class == DatasetClasses else forward_with_triplet_loss
+    train_model(model, params_path, epochs, mb_in_run, train_dataset, optimizer, forward_with_loss)
 
 
 if __name__ == '__main__':

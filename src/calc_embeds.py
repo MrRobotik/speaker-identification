@@ -5,6 +5,8 @@ import torch
 from nn_models import *
 from utils import DatasetBase
 
+# TODO: REPAIR THIS SCRIPT
+
 
 def compute_embeddings(model, dataset, device):
     for path, t in dataset.data:
