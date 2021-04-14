@@ -1,3 +1,4 @@
+import sys
 import time
 import argparse
 import numpy as np
@@ -123,6 +124,8 @@ def arg_parser():
     parser.add_argument('-b', '--batch_size', type=int, nargs='?', default=64, help='Mini-batch size (default: 64)')
     parser.add_argument('-m', '--mb_in_run', type=int, nargs='?', default=50, help='Number of mini-batches in one '
                                                                                     'training run (default: 50)')
+    parser.add_argument('--lr', required=True, type=float, nargs='?', default=64, help='Learning rate for optimizer')
+    parser.add_argument('--optim', required=True, nargs='?', default=64, help='Optimizer [SGD | Adam]')
     args = parser.parse_args()
     return args
 
@@ -137,6 +140,7 @@ def main():
     epochs = args.epochs
     batch_size = args.batch_size
     mb_in_run = args.mb_in_run
+    lr = args.lr
 
     # create training dataset:
     feats_type = 'mfcc'
@@ -151,7 +155,13 @@ def main():
         print('Model parameters were loaded!')
 
     # optimizer selection:
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    if args.optim == 'SGD':
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
+    elif args.optim == 'Adam':
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    else:
+        print('Invalid optimizer', file=sys.stderr)
+        exit(1)
 
     # calling train model function:
     train_model(model, params_path, epochs, mb_in_run, train_dataset, optimizer, device)
