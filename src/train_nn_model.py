@@ -6,68 +6,24 @@ import torch
 import torch.nn.functional as F
 from pathlib import Path
 
-from nn_models import XVectorsBaseline
-from utils import DatasetBase
+from nn_models import *
+from utils import DatasetClasses, DatasetTriplets
 
+model_class_to_feats_type = {
+    XVectors: 'mfcc',
+    XVectorsSoftmax: 'mfcc'
+}
 
-# DATASET CONSTRUCTION:
+model_class_to_dataset_class = {
+    XVectorsSoftmax: DatasetClasses
+}
 
-class TrainDataset(DatasetBase):
-
-    def __init__(self, data_folder, feats_type, batch_size, device):
-        super().__init__(data_folder, feats_type)
-        self.batch_size = batch_size
-        self.device = device
-        self.cross_val_indices = []
-        for utters in self.speaker_data:
-            i = utters[0]
-            self.cross_val_indices.append(i)
-        cvis = set(self.cross_val_indices)
-        self.train_indices = [i for i in range(len(self.data)) if i not in cvis]
-        self.cross_val_indices = np.asarray(self.cross_val_indices)
-        self.train_indices = np.asarray(self.train_indices)
-
-    def __iter__(self):
-        indices = np.random.permutation(self.train_indices)
-        for batch_start in range(0, len(indices), self.batch_size):
-            batch_end = batch_start + self.batch_size
-            inputs = []
-            labels = []
-            for i in indices[batch_start:batch_end]:
-                path, t = self.data[i]
-                try:
-                    x = torch.FloatTensor(np.expand_dims(np.load(path), axis=0))
-                except Exception:
-                    continue
-                if x.size()[2] < 15:
-                    continue
-                inputs.append(x.to(self.device))
-                labels.append(t)
-            yield inputs, labels
-
-    def cross_val(self):
-        labels = []
-        inputs = []
-        for i in self.cross_val_indices:
-            path, t = self.data[i]
-            try:
-                x = torch.FloatTensor(np.expand_dims(np.load(path), axis=0))
-            except Exception:
-                continue
-            if x.size()[2] < 15:
-                continue
-            inputs.append(x.to(self.device))
-            labels.append(t)
-        return inputs, labels
-
-
-# TRAINING MODEL:
 
 def cross_validate(model, dataset):
     model.eval()
     with torch.no_grad():
         inputs, labels = dataset.cross_val()
-        _, outputs = model(inputs)
+        outputs = model(inputs)
         loss = F.cross_entropy(outputs.cpu(), torch.tensor(labels))
     model.train()
     return float(loss)
@@ -88,7 +44,7 @@ def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, devic
 
         for inputs, labels in dataset:
 
-            _, outputs = model(inputs)
+            outputs = model(inputs)
             loss = F.cross_entropy(outputs, torch.tensor(labels).to(device))
             loss.backward()
             optimizer.step()
@@ -124,8 +80,9 @@ def arg_parser():
     parser.add_argument('-b', '--batch_size', type=int, nargs='?', default=64, help='Mini-batch size (default: 64)')
     parser.add_argument('-m', '--mb_in_run', type=int, nargs='?', default=50, help='Number of mini-batches in one '
                                                                                     'training run (default: 50)')
-    parser.add_argument('--lr', required=True, type=float, nargs='?', default=64, help='Learning rate for optimizer')
-    parser.add_argument('--optim', required=True, nargs='?', default=64, help='Optimizer [SGD | Adam]')
+    parser.add_argument('-n', '--name', required=True, help='Class name of embedding model')
+    parser.add_argument('--lr', type=float, nargs='?', default=1e-3, help='Learning rate for optimizer')
+    parser.add_argument('--optim', required=True, nargs='?', default='SGD', help='Optimizer [SGD | Adam]')
     args = parser.parse_args()
     return args
 
@@ -142,25 +99,32 @@ def main():
     mb_in_run = args.mb_in_run
     lr = args.lr
 
-    # create training dataset:
-    feats_type = 'mfcc'
-    train_dataset = TrainDataset(training_data, feats_type, batch_size, device)
+    if args.name == 'XVectorsSoftmax':
+        model_class = eval(args.name)
+    else:
+        print('Invalid model name', file=sys.stderr)
+        exit(1)
 
-    # model declaration:
+    # create dataset:
+    dataset_class = model_class_to_dataset_class[model_class]
+    feats_type = model_class_to_feats_type[model_class]
+    min_sample_length = model_class.min_sample_length()
+    train_dataset = dataset_class(training_data, feats_type, batch_size, device, min_sample_length)
+
+    # model initialization:
     speakers_count = train_dataset.speakers_count()
-    model = XVectorsBaseline(speakers_count).to(device)
-
+    model = model_class(speakers_count).to(device)
     if params_path.is_file():
         model.load_state_dict(torch.load(params_path))
         print('Model parameters were loaded!')
 
     # optimizer selection:
-    if args.optim == 'SGD':
+    if   args.optim == 'SGD':
         optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
     elif args.optim == 'Adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     else:
-        print('Invalid optimizer', file=sys.stderr)
+        print('Invalid optimizer name', file=sys.stderr)
         exit(1)
 
     # calling train model function:
