@@ -139,11 +139,11 @@ def main():
     mb_in_run = args.mb_in_run
 
     # create training dataset:
-    feats_type = 'mfcc.npy'
+    feats_type = 'mfcc'
     train_dataset = TrainDataset(training_data, feats_type, batch_size, device)
 
     # model declaration:
-    speakers_count = len(train_dataset)
+    speakers_count = train_dataset.speakers_count()
     model = XVectorsBaseline(speakers_count).to(device)
 
     if params_path.is_file():

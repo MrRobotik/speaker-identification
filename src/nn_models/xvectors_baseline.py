@@ -24,7 +24,7 @@ class XVectorsBaseline(nn.Module):
         self.bn3 = nn.BatchNorm1d(512)
         self.fc3 = nn.Linear(512, output_classes)
 
-    def forward(self, utters):
+    def forward(self, utters, just_embed=False):
         stats_pools = []
         for x in utters:
             y = torch.squeeze(self.tdnn(x))
@@ -33,9 +33,22 @@ class XVectorsBaseline(nn.Module):
 
         x = torch.stack(stats_pools, dim=0)
         embed_a = self.fc1(self.bn1(x))
+        if just_embed:
+            return embed_a
+
         embed_b = self.fc2(self.bn2(F.relu(embed_a)))
         logits  = self.fc3(self.bn3(F.relu(embed_b)))
         return embed_a, logits
+
+    def speaker_embed(self, x, device='cpu'):
+        with torch.no_grad():
+            x = torch.FloatTensor(np.expand_dims(x, axis=0))
+            if x.size()[2] < 15:
+                return None
+            if device != 'cpu':
+                x = x.to(device)
+            embed = self([x], just_embed=True)
+        return embed
 
 
 # CALCULATING AVG SESSION XVECTORS FOR EVERY SPEAKER IN TESTING DATASET (functions used only in jupyter notebook)
