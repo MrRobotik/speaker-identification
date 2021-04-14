@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 class XVectorsBaseline(nn.Module):
 
-    def __init__(self, output_classes):
+    def __init__(self, output_classes=1211):
         super().__init__()
         self.tdnn = nn.Sequential(
             nn.Conv1d(in_channels=24,  out_channels=512,  kernel_size=5, dilation=1), nn.ReLU(),
