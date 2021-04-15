@@ -75,7 +75,7 @@ class DatasetClasses(DatasetBase):
                 continue
             inputs.append(x.to(self.device))
             labels.append(t)
-        return inputs, labels
+        return inputs, torch.tensor(labels).to(self.device)
 
 
 class DatasetTriplets(DatasetBase):

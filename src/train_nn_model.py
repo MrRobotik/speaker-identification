@@ -9,22 +9,15 @@ from pathlib import Path
 from nn_models import *
 from utils import DatasetClasses, DatasetTriplets
 
-model_class_to_feats_type = {
-    XVectors: 'mfcc',
-    XVectorsSoftmax: 'mfcc',
-    XVectorsTriplet: 'mfcc'
-}
-
-model_class_to_dataset_class = {
-    XVectorsSoftmax: DatasetClasses,
-    XVectorsTriplet: DatasetTriplets
-}
-
 
 def forward_with_softmax_loss(model, inputs, labels):
-    outputs = model(inputs)
+    _, outputs = model(inputs)
     loss = F.cross_entropy(outputs, labels)
     return loss
+
+
+def forward_with_angular_softmax_loss(model, inputs, labels):
+    raise NotImplemented  # TODO: implement me
 
 
 def forward_with_triplet_loss(model, anchors, positives, negatives):
@@ -35,17 +28,17 @@ def forward_with_triplet_loss(model, anchors, positives, negatives):
     return loss
 
 
-def cross_validate(model, dataset, forward_with_loss):
+def cross_validate(model, dataset, forward_with_loss_fn):
     model.eval()
     with torch.no_grad():
-        loss = forward_with_loss(model, *dataset.cross_val())
+        loss = forward_with_loss_fn(model, *dataset.cross_val())
     model.train()
     return float(loss)
 
 
-def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, forward_with_loss):
+def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, forward_with_loss_fn):
 
-    best_c_val_loss = cross_validate(model, dataset, forward_with_loss)
+    best_c_val_loss = cross_validate(model, dataset, forward_with_loss_fn)
     print(f'Initial cross-val loss: {best_c_val_loss}\n')
     batch_total = int(np.ceil(len(dataset) / dataset.batch_size))
 
@@ -58,7 +51,7 @@ def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, forwa
 
         for batch in dataset:
 
-            loss = forward_with_loss(model, *batch)
+            loss = forward_with_loss_fn(model, *batch)
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
@@ -66,7 +59,7 @@ def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, forwa
             batch_count += 1
 
             if batch_count % mb_in_run == 0:
-                c_val_loss = cross_validate(model, dataset, forward_with_loss)
+                c_val_loss = cross_validate(model, dataset, forward_with_loss_fn)
                 run_duration = round(time.time() - run_start, 3)
                 print(f'epoch: {epoch}/{epochs}, '
                       f'processed m.b.: {batch_count}/{batch_total}, '
@@ -92,8 +85,8 @@ def arg_parser():
     parser.add_argument('-e', '--epochs', type=int, nargs='?', default=10, help='Number of training epochs (default: 10)')
     parser.add_argument('-b', '--batch_size', type=int, nargs='?', default=64, help='Mini-batch size (default: 64)')
     parser.add_argument('-m', '--mb_in_run', type=int, nargs='?', default=50, help='Number of mini-batches in one '
-                                                                                    'training run (default: 50)')
-    parser.add_argument('-n', '--name', required=True, help='Class name of embedding model')
+                                                                                   'training run (default: 50)')
+    parser.add_argument('--loss', required=True, help='Loss used for training [softmax | a_softmax | triplet]')
     parser.add_argument('--lr', type=float, nargs='?', default=1e-3, help='Learning rate for optimizer')
     parser.add_argument('--optim', required=True, nargs='?', default='SGD', help='Optimizer [SGD | Adam]')
     args = parser.parse_args()
@@ -105,26 +98,33 @@ def main():
     args = arg_parser()
 
     # training configuration:
-    training_data = Path(args.train_data)
+    train_data = Path(args.train_data)
     params_path = Path(args.params)
     epochs = args.epochs
     batch_size = args.batch_size
     mb_in_run = args.mb_in_run
     lr = args.lr
+    loss_type = args.loss
 
-    if args.name == 'XVectorsSoftmax':
-        model_class = eval(args.name)
-    elif args.name == 'XVectorsTriplet':
-        model_class = eval(args.name)
+    # set respective dataset, model and loss type:
+    if loss_type == 'triplet':
+        dataset_class = DatasetTriplets
+        model_class = XVectors
+        forward_with_loss_fn = forward_with_triplet_loss
     else:
-        print('Invalid model name', file=sys.stderr)
-        exit(1)
+        if loss_type == 'a_softmax':
+            forward_with_loss_fn = forward_with_angular_softmax_loss
+        elif loss_type == 'softmax':
+            forward_with_loss_fn = forward_with_softmax_loss
+        else:
+            print('Invalid loss name', file=sys.stderr)
+            exit(1)
+        dataset_class = DatasetClasses
+        model_class = XVectorsSoftmax
 
-    # create dataset:
-    dataset_class = model_class_to_dataset_class[model_class]
-    feats_type = model_class_to_feats_type[model_class]
+    feats_type = 'mfcc'
     min_sample_length = model_class.min_sample_length()
-    train_dataset = dataset_class(training_data, feats_type, batch_size, device, min_sample_length)
+    train_dataset = dataset_class(train_data, feats_type, batch_size, device, min_sample_length)
 
     # model initialization:
     model = model_class().to(device)
@@ -133,7 +133,7 @@ def main():
         print('Model parameters were loaded!')
 
     # optimizer selection:
-    if   args.optim == 'SGD':
+    if args.optim == 'SGD':
         optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9)
     elif args.optim == 'Adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -142,8 +142,7 @@ def main():
         exit(1)
 
     # calling train model function:
-    forward_with_loss = forward_with_softmax_loss if dataset_class == DatasetClasses else forward_with_triplet_loss
-    train_model(model, params_path, epochs, mb_in_run, train_dataset, optimizer, forward_with_loss)
+    train_model(model, params_path, epochs, mb_in_run, train_dataset, optimizer, forward_with_loss_fn)
 
 
 if __name__ == '__main__':
