@@ -7,15 +7,18 @@ from utils import DatasetBase
 
 
 def compute_embeddings(model, dataset, device):
-    # TODO: REPAIR THIS FUNCTION
     for path, t in dataset.data:
         try:
-            x = np.load(path)
+            x = torch.FloatTensor(np.expand_dims(np.load(path), axis=0))
         except Exception:
             continue
-        y = model.speaker_embed(x, device=device)
+        if x.size()[2] < model.min_sample_length():
+            continue
+        y = model(x)
         if y is not None:
-            yield y.cpu().detach().numpy().ravel(), t
+            if device == 'cuda':
+                y = y.cpu()
+            yield y.detach().numpy().ravel(), t
 
 
 def main():
@@ -26,7 +29,6 @@ def main():
     args = parser.parse_args()
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    model_class = eval(args.name)
     feats_type = 'mfcc'
     dataset = DatasetBase(Path(args.input), feats_type)
     model = XVectors().to(device).eval()
