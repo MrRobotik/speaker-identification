@@ -1,3 +1,4 @@
+import math
 import sys
 import time
 import argparse
@@ -16,8 +17,28 @@ def forward_with_softmax_loss(model, inputs, labels):
     return loss
 
 
-def forward_with_angular_softmax_loss(model, inputs, labels):
-    raise NotImplemented  # TODO: implement me
+def euclidean_dist_without_sqrt(points1, points2):
+    dist = points1 - points2
+    dist = torch.pow(dist, 2)
+    dist = torch.sum(dist, dim=1)
+    return dist
+
+
+def forward_with_angular_softmax_loss(model, anchors, positives, negatives, alpha=0.5):
+    out_anchors = model(anchors)
+    out_positives = model(positives)
+    out_negatives = model(negatives)
+
+    dist1 = torch.abs(euclidean_dist_without_sqrt(out_anchors, out_positives))
+    xc = (out_anchors + out_positives) / 2
+    dist2 = torch.abs(euclidean_dist_without_sqrt(out_negatives, xc))
+
+    # default value for alpha is 0.5 radians (approximately 30 degrees)
+    constant = 4 * (math.tan(alpha)**2)
+    loss = dist1 - constant * dist2
+    loss = torch.where(loss > 0, loss, torch.zeros(loss.size(0)))
+
+    return torch.mean(loss)
 
 
 def forward_with_triplet_loss(model, anchors, positives, negatives):
@@ -107,20 +128,22 @@ def main():
     loss_type = args.loss
 
     # set respective dataset, model and loss type:
-    if loss_type == 'triplet':
+    if loss_type == 'triplet' or loss_type == 'a_softmax':
         dataset_class = DatasetTriplets
         model_class = XVectors
-        forward_with_loss_fn = forward_with_triplet_loss
-    else:
-        if loss_type == 'a_softmax':
-            forward_with_loss_fn = forward_with_angular_softmax_loss
-        elif loss_type == 'softmax':
-            forward_with_loss_fn = forward_with_softmax_loss
+
+        if loss_type == 'triplet':
+            forward_with_loss_fn = forward_with_triplet_loss
         else:
-            print('Invalid loss name', file=sys.stderr)
-            exit(1)
+            forward_with_loss_fn = forward_with_angular_softmax_loss
+
+    elif loss_type == 'softmax':
         dataset_class = DatasetClasses
         model_class = XVectorsSoftmax
+        forward_with_loss_fn = forward_with_softmax_loss
+    else:
+        print('Invalid loss name', file=sys.stderr)
+        exit(1)
 
     feats_type = 'mfcc'
     min_sample_length = model_class.min_sample_length()
