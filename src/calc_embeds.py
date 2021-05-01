@@ -14,7 +14,7 @@ def compute_embeddings(model, dataset, device):
             continue
         if x.size()[2] < model.min_sample_length():
             continue
-        y = model(x)
+        y = model([x.to(device)])
         if y is not None:
             if device == 'cuda':
                 y = y.cpu()

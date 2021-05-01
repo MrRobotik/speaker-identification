@@ -42,10 +42,13 @@ def forward_with_angular_softmax_loss(model, anchors, positives, negatives, alph
 
 
 def forward_with_triplet_loss(model, anchors, positives, negatives):
-    out_anchors = model(anchors)
-    out_positives = model(positives)
-    out_negatives = model(negatives)
-    loss = F.triplet_margin_loss(out_anchors, out_positives, out_negatives, margin=0.8)
+    anc = model(anchors)
+    pos = model(positives)
+    neg = model(negatives)
+    anc_norm = anc / anc.norm(dim=1, keepdim=True)
+    pos_norm = pos / pos.norm(dim=1, keepdim=True)
+    neg_norm = neg / neg.norm(dim=1, keepdim=True)
+    loss = F.triplet_margin_loss(anc_norm, pos_norm, neg_norm, margin=0.8)
     return loss
 
 
