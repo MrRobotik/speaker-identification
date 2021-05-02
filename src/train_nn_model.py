@@ -24,7 +24,7 @@ def euclidean_dist_without_sqrt(points1, points2):
     return dist
 
 
-def forward_with_angular_softmax_loss(model, anchors, positives, negatives, alpha=0.5):
+def forward_with_angular_loss(model, anchors, positives, negatives, alpha=0.5):
     out_anchors = model(anchors)
     out_positives = model(positives)
     out_negatives = model(negatives)
@@ -39,6 +39,11 @@ def forward_with_angular_softmax_loss(model, anchors, positives, negatives, alph
     loss = torch.where(loss > 0, loss, torch.zeros(loss.size(0)))
 
     return torch.mean(loss)
+
+
+def forward_with_angular_softmax_loss(model, inputs, labels):
+    loss = model(inputs, labels, True)
+    return loss
 
 
 def forward_with_triplet_loss(model, anchors, positives, negatives):
@@ -110,7 +115,7 @@ def arg_parser():
     parser.add_argument('-b', '--batch_size', type=int, nargs='?', default=64, help='Mini-batch size (default: 64)')
     parser.add_argument('-m', '--mb_in_run', type=int, nargs='?', default=50, help='Number of mini-batches in one '
                                                                                    'training run (default: 50)')
-    parser.add_argument('--loss', required=True, help='Loss used for training [softmax | a_softmax | triplet]')
+    parser.add_argument('--loss', required=True, help='Loss used for training [softmax | a_softmax | triplet | angular]')
     parser.add_argument('--lr', type=float, nargs='?', default=1e-3, help='Learning rate for optimizer')
     parser.add_argument('--optim', required=True, nargs='?', default='SGD', help='Optimizer [SGD | Adam]')
     args = parser.parse_args()
@@ -131,19 +136,24 @@ def main():
     loss_type = args.loss
 
     # set respective dataset, model and loss type:
-    if loss_type == 'triplet' or loss_type == 'a_softmax':
+    if loss_type == 'triplet' or loss_type == 'angular':
         dataset_class = DatasetTriplets
         model_class = XVectors
 
         if loss_type == 'triplet':
             forward_with_loss_fn = forward_with_triplet_loss
         else:
-            forward_with_loss_fn = forward_with_angular_softmax_loss
+            forward_with_loss_fn = forward_with_angular_loss
 
-    elif loss_type == 'softmax':
+    elif loss_type == 'softmax' or loss_type == 'a_softmax':
         dataset_class = DatasetClasses
-        model_class = XVectorsSoftmax
-        forward_with_loss_fn = forward_with_softmax_loss
+
+        if loss_type == 'softmax':
+            model_class = XVectorsSoftmax
+            forward_with_loss_fn = forward_with_softmax_loss
+        else:
+            model_class = XVectorsAngularSoftmax
+            forward_with_loss_fn = forward_with_angular_softmax_loss
     else:
         print('Invalid loss name', file=sys.stderr)
         exit(1)
