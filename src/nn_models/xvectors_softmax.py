@@ -14,6 +14,6 @@ class XVectorsSoftmax(XVectors):
 
     def forward(self, utters):
         embed_a = super().forward(utters)
-        embed_b = self.fc2(self.bn2(F.relu(embed_a)))
-        logits  = self.fc3(self.bn3(F.relu(embed_b)))
+        embed_b = F.relu(self.fc2(self.bn2(embed_a)))
+        logits = self.fc3(self.bn3(embed_b))
         return embed_a, logits

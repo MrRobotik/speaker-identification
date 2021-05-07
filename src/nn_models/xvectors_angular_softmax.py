@@ -10,14 +10,11 @@ class XVectorsAngularSoftmax(XVectors):
         super().__init__()
         self.bn2 = nn.BatchNorm1d(512)
         self.fc2 = nn.Linear(512, 512)
+        self.bn3 = nn.BatchNorm1d(512)
         self.angular_softmax = AngularSoftmax(512, output_classes)
 
-    def forward(self, utters, labels=None, training=True):
+    def forward(self, utters, labels=None):
         embed_a = super().forward(utters)
-
-        if training:
-            embed_b = self.fc2(self.bn2(F.relu(embed_a)))
-            loss = self.angular_softmax(embed_b, labels)
-            return loss
-        else:
-            return embed_a
+        embed_b = F.relu(self.fc2(self.bn2(embed_a)))
+        loss = self.angular_softmax(self.bn3(embed_b), labels)
+        return loss

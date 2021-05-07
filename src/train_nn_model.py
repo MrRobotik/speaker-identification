@@ -42,7 +42,7 @@ def forward_with_angular_loss(model, anchors, positives, negatives, alpha=0.5):
 
 
 def forward_with_angular_softmax_loss(model, inputs, labels):
-    loss = model(inputs, labels, True)
+    loss = model(inputs, labels)
     return loss
 
 
@@ -97,7 +97,7 @@ def train_model(model, params_path, epochs, mb_in_run, dataset, optimizer, forwa
                       f'duration: {run_duration}s')
                 train_loss = 0.0
 
-                if c_val_loss < best_c_val_loss:
+                if c_val_loss < best_c_val_loss or best_c_val_loss == 0:
                     torch.save(model.state_dict(), params_path)
                     best_c_val_loss = c_val_loss
                 run_start = time.time()

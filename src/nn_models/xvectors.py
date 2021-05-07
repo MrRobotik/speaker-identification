@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class XVectors(nn.Module):
@@ -24,7 +25,7 @@ class XVectors(nn.Module):
             stats_pools.append(stats_pool)
 
         x = torch.stack(stats_pools, dim=0)
-        embed_a = self.fc1(self.bn1(x))
+        embed_a = F.relu(self.fc1(self.bn1(x)))
         return embed_a
 
     @staticmethod

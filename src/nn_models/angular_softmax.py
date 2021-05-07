@@ -10,28 +10,33 @@ class AngularSoftmax(nn.Module):
     def __init__(self, in_features, output_classes, m=3):
         super(AngularSoftmax, self).__init__()
         self.m = m
-        self.weights = Parameter(torch.FloatTensor(output_classes, in_features))
+        self.weights = Parameter(torch.FloatTensor(in_features, output_classes))
         nn.init.xavier_uniform_(self.weights)
 
     def forward(self, embeddings, labels):
-        normalized_weights = F.normalize(self.weights)
-
+        normalized_weights = F.normalize(self.weights, dim=0)
+        yn_mask = ([i for i in range(labels.shape[0])], labels)
+        logits = torch.matmul(embeddings, normalized_weights)
+        
         # computing numerators
         emb_magnitudes = torch.linalg.norm(embeddings, dim=1)
-        dot_products = torch.einsum('bs,bs->b', embeddings, normalized_weights[labels])
+        dot_products = logits[yn_mask]
         cosines = dot_products / emb_magnitudes
-        angles = torch.acos(cosines)
+        angles = torch.acos(torch.clip(cosines, -1, +1))
         k = torch.floor(angles / (math.pi / self.m))
         phi = ((-1) ** k) * torch.cos(angles * self.m) - 2 * k
         numerators = torch.exp(emb_magnitudes * phi)
-
-        # computing denominator
-        norm_sums = torch.matmul(embeddings, normalized_weights.T)
-        norm_sums = torch.exp(norm_sums)
-        norm_sums = torch.sum(norm_sums, dim=1)
-        norm_sums -= torch.exp(dot_products)
+        
+        # computing denominators
+        norm_sums = torch.exp(logits)
+        norm_sums = torch.sum(norm_sums, dim=1) - norm_sums[yn_mask]
         denominators = numerators + norm_sums
-
+        
+        # for numerical stability
+        eps = torch.finfo(torch.float32).eps
+        numerators = torch.abs(numerators) + eps
+        denominators = torch.abs(denominators) + eps
+        
         total_loss = (-1) * torch.log(numerators / denominators)
         return torch.mean(total_loss)
 
