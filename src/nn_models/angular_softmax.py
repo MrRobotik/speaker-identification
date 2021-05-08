@@ -7,36 +7,41 @@ from torch.nn.parameter import Parameter
 
 class AngularSoftmax(nn.Module):
 
-    def __init__(self, in_features, output_classes, m=3):
+    def __init__(self, in_features, output_classes, m=1):
         super(AngularSoftmax, self).__init__()
         self.m = m
         self.weights = Parameter(torch.FloatTensor(in_features, output_classes))
         nn.init.xavier_uniform_(self.weights)
 
-    def forward(self, embeddings, labels):
-        normalized_weights = F.normalize(self.weights, dim=0)
-        yn_mask = ([i for i in range(labels.shape[0])], labels)
-        logits = torch.matmul(embeddings, normalized_weights)
-        
-        # computing numerators
-        emb_magnitudes = torch.linalg.norm(embeddings, dim=1)
-        dot_products = logits[yn_mask]
-        cosines = dot_products / emb_magnitudes
-        angles = torch.acos(torch.clip(cosines, -1, +1))
-        k = torch.floor(angles / (math.pi / self.m))
-        phi = ((-1) ** k) * torch.cos(angles * self.m) - 2 * k
-        numerators = torch.exp(emb_magnitudes * phi)
-        
-        # computing denominators
-        norm_sums = torch.exp(logits)
-        norm_sums = torch.sum(norm_sums, dim=1) - norm_sums[yn_mask]
-        denominators = numerators + norm_sums
-        
+    def forward(self, inputs, labels):
+        w_normalized = F.normalize(self.weights, dim=0)
+        logits = torch.matmul(inputs, w_normalized)
+
+        labels_list = labels.long().tolist()
+        yn_indices = ([i for i in range(len(labels_list))], labels_list)
+        yn_complement_mask = torch.ones(logits.shape, dtype=torch.float32)
+        yn_complement_mask[yn_indices] = 0
+        yn_complement_mask = yn_complement_mask.to(inputs.device)
+
         # for numerical stability
         eps = torch.finfo(torch.float32).eps
-        numerators = torch.abs(numerators) + eps
-        denominators = torch.abs(denominators) + eps
-        
+
+        # computing numerators
+        x_norms = torch.linalg.norm(inputs, dim=1)
+        cosines = torch.clip(logits[yn_indices] / x_norms, -1, +1)
+        angles = torch.acos(cosines)
+        k = torch.floor(angles / (math.pi / self.m))
+        # phi = ((-1) ** k) * torch.cos(angles * self.m) - 2 * k
+        cos_m_theta = 4 * (cosines ** 3) - 3 * cosines  # multi-angle formula
+        phi = ((-1) ** k) * cosines - 2 * k
+        numerators = torch.exp(x_norms * phi) + eps
+
+        # computing denominators
+        norm_sums = torch.exp(logits)
+        norm_sums = norm_sums * yn_complement_mask
+        norm_sums = torch.sum(norm_sums, dim=1)
+        denominators = numerators + norm_sums
+
         total_loss = (-1) * torch.log(numerators / denominators)
         return torch.mean(total_loss)
 
@@ -45,19 +50,19 @@ class AngularSoftmax(nn.Module):
     #     total_loss = 0
     #     count = 0
     #
-    #     normalized_weights = F.normalize(self.weights)
+    #     w_normalizedeights = F.normalize(self.weights)
     #
     #     for emb, label in zip(embeddings, labels):
     #         # computing numerator
     #         emb_magnitude = torch.linalg.norm(emb).item()
-    #         cosine = torch.dot(emb, normalized_weights[label]) / emb_magnitude
+    #         cosine = torch.dot(emb, w_normalizedeights[label]) / emb_magnitude
     #         angle = math.acos(cosine.item())
     #         k = int(angle / (math.pi / self.m))
     #         phi = ((-1) ** k) * math.cos(angle * self.m) - 2 * k
     #         numerator = math.exp(emb_magnitude * phi)
     #
     #         # computing denominator
-    #         norm_sum = torch.matmul(normalized_weights, emb)
+    #         norm_sum = torch.matmul(w_normalizedeights, emb)
     #         norm_sum = torch.exp(norm_sum)
     #         norm_sum[label] = 0
     #         norm_sum = torch.sum(norm_sum).item()
