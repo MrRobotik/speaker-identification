@@ -7,7 +7,7 @@ from torch.nn.parameter import Parameter
 
 class AngularSoftmax(nn.Module):
 
-    def __init__(self, in_features, output_classes, m=1):
+    def __init__(self, in_features, output_classes, m=3):
         super(AngularSoftmax, self).__init__()
         self.m = m
         self.weights = Parameter(torch.FloatTensor(in_features, output_classes))
@@ -19,31 +19,17 @@ class AngularSoftmax(nn.Module):
 
         labels_list = labels.long().tolist()
         yn_indices = ([i for i in range(len(labels_list))], labels_list)
-        yn_complement_mask = torch.ones(logits.shape, dtype=torch.float32)
-        yn_complement_mask[yn_indices] = 0
-        yn_complement_mask = yn_complement_mask.to(inputs.device)
 
-        # for numerical stability
-        eps = torch.finfo(torch.float32).eps
-
-        # computing numerators
         x_norms = torch.linalg.norm(inputs, dim=1)
         cosines = torch.clip(logits[yn_indices] / x_norms, -1, +1)
         angles = torch.acos(cosines)
         k = torch.floor(angles / (math.pi / self.m))
-        # phi = ((-1) ** k) * torch.cos(angles * self.m) - 2 * k
         cos_m_theta = 4 * (cosines ** 3) - 3 * cosines  # multi-angle formula
-        phi = ((-1) ** k) * cosines - 2 * k
-        numerators = torch.exp(x_norms * phi) + eps
+        phi = ((-1) ** k) * cos_m_theta - 2 * k
 
-        # computing denominators
-        norm_sums = torch.exp(logits)
-        norm_sums = norm_sums * yn_complement_mask
-        norm_sums = torch.sum(norm_sums, dim=1)
-        denominators = numerators + norm_sums
-
-        total_loss = (-1) * torch.log(numerators / denominators)
-        return torch.mean(total_loss)
+        # logits[yn_indices] = x_norms * phi * 0.5 + logits[yn_indices].clone() * 0.5
+        logits[yn_indices] = x_norms * phi
+        return F.cross_entropy(logits, labels)
 
     # # sequential version:
     # def forward(self, embeddings, labels):

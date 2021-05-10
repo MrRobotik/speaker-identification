@@ -53,6 +53,7 @@ class DatasetClasses(DatasetBase):
             for i in indices[batch_start:batch_end]:
                 path, t = self.data[i]
                 try:
+                    # x = torch.DoubleTensor(np.expand_dims(np.load(path), axis=0))
                     x = torch.FloatTensor(np.expand_dims(np.load(path), axis=0))
                 except Exception:
                     continue
@@ -68,6 +69,7 @@ class DatasetClasses(DatasetBase):
         for i in self.cross_val_indices:
             path, t = self.data[i]
             try:
+                # x = torch.DoubleTensor(np.expand_dims(np.load(path), axis=0))
                 x = torch.FloatTensor(np.expand_dims(np.load(path), axis=0))
             except Exception:
                 continue
