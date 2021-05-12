@@ -25,7 +25,8 @@ class XVectors(nn.Module):
             stats_pools.append(stats_pool)
 
         x = torch.stack(stats_pools, dim=0)
-        embed_a = F.relu(self.fc1(self.bn1(x)))
+        embed_a = self.fc1(self.bn1(x))
+        # return F.relu(embed_a)
         return embed_a
 
     @staticmethod

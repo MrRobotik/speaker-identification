@@ -2,11 +2,12 @@ import argparse
 from pathlib import Path
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics import det_curve, DetCurveDisplay
 import bob.measure as measure
+import matplotlib.pyplot as plt
 
 
-def evaluate_eer(inputs, labels):
-    scores_mat = cosine_similarity(inputs, inputs)
+def prepare_pos_neg(labels, scores_mat):
     negatives = []
     positives = []
 
@@ -19,7 +20,21 @@ def evaluate_eer(inputs, labels):
 
     positives = np.concatenate(positives)
     negatives = np.concatenate(negatives)
+    return positives, negatives
+
+
+def evaluate_eer(negatives, positives):
     return measure.eer(negatives, positives)
+
+
+def show_det_curve(negatives, positives):
+    y = [-1 for i in range(len(negatives))] + \
+        [+1 for i in range(len(positives))]
+    scores = np.concatenate((negatives, positives))
+    fpr, fnr, _ = det_curve(y, scores)
+    display = DetCurveDisplay(fpr=fpr, fnr=fnr)
+    display.plot()
+    plt.show()
 
 
 def main():
@@ -29,8 +44,11 @@ def main():
     input_dir = Path(args.input)
     embeddings = np.load(input_dir / 'embeddings.npy')
     labels = np.load(input_dir / 'labels.npy')
-    eer = evaluate_eer(embeddings, labels)
+    scores_mat = cosine_similarity(embeddings, embeddings)
+    positives, negatives = prepare_pos_neg(labels, scores_mat)
+    eer = evaluate_eer(negatives, positives)
     print('EER (cosine sim.): {}'.format(eer))
+    show_det_curve(negatives, positives)
 
 
 if __name__ == '__main__':

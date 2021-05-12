@@ -53,7 +53,9 @@ def forward_with_triplet_loss(model, anchors, positives, negatives):
     anc_norm = anc / anc.norm(dim=1, keepdim=True)
     pos_norm = pos / pos.norm(dim=1, keepdim=True)
     neg_norm = neg / neg.norm(dim=1, keepdim=True)
-    loss = F.triplet_margin_loss(anc_norm, pos_norm, neg_norm, margin=0.8)
+#    margin = 0.8
+    margin = 1.4
+    loss = F.triplet_margin_loss(anc_norm, pos_norm, neg_norm, margin=margin)
     return loss
 
 
