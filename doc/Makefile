@@ -4,7 +4,7 @@ all: doc.ps
 doc.ps: doc.dvi
 	dvips doc
 
-doc.dvi: doc.tex literature.bib doc-part2.tex
+doc.dvi: doc.tex literature.bib doc-part2.tex eer_table.tex
 	latex doc
 	-bibtex doc
 	latex doc

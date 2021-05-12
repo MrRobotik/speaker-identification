@@ -6,11 +6,11 @@ Goal of our work was to test different loss functions separately to see their po
 
 \subsection*{Implementation and dataset}
 
-We build the model using pytorch library in order to get more flexibility, despite the fact the model used in production is already implemented in popular C++ Kaldi library. We decided to use the smaller version of the new VoxCeleb~\cite{VoxCeleb} dataset, which contains of 148 642 utterances from 1211 speakers in training set, and 4874 utterances from 40 speakers in test set, all from YouTube videos. We preprocessed each utterance before the training step. We used single channel audio with 16kHz sampling rate as a raw input. Preemphasis with coeficient 0.97 has been applied and then the audio was divided into overlapping frames each of length of 25 milliseconds and with step of 15 milliseconds between adjacent frames. For each frame, the STFT\footnote{Short Time Fourier Transform} was computed and finally the 128-dimensional spectrogram was extracted using Mel frequency filter banks. In traditional approaches, the high correlation in this spectrogram was undesirable, but in DNN approaches more dimensionality has been shown to yield better results~\cite{CNN_2016}. However, we used a decorrelated spectrogram -- the MFCC\footnote{https://haythamfayek.com/2016/04/21/speech-processing-for-machine-learning.html}, because in the original x-vector paper they used those. Initially we wanted to test both, but soon we realized that our hardware might not let us to do so, and we decided to use a 24-dimensional MFCC features only as a input to the model. For all these audio processing tasks, we've used python framework librosa. We've implemented and used 3 training methods, each defined by different loss function.
+We build the model using pytorch library in order to get more flexibility, despite the fact the model used in production is already implemented in popular C++ Kaldi library. We decided to use the smaller version of the new VoxCeleb~\cite{VoxCeleb} dataset, which consists of 148 642 utterances from 1211 speakers in the training set, and 4874 utterances from 40 speakers in the test set, all from YouTube videos. We preprocessed each utterance before the training step. We used single channel audio with 16kHz sampling rate as a raw input. Preemphasis with coeficient 0.97 has been applied and then the audio was divided into overlapping frames each of length of 25 milliseconds and with step of 15 milliseconds between adjacent frames. For each frame, the STFT\footnote{Short Time Fourier Transform} has been computed and finally the 128-dimensional spectrogram has been extracted using Mel frequency filter banks. In traditional approaches, the high correlation in this spectrogram used to be undesirable, but in DNN approaches more dimensionality has been shown to yield better results~\cite{CNN_2016}. However, we used a decorrelated spectrogram -- the MFCC\footnote{https://haythamfayek.com/2016/04/21/speech-processing-for-machine-learning.html}, because in the original x-vector paper they used those. Initially we wanted to test both, but soon we realized that our hardware might not let us to do so, and we decided to use a 24-dimensional MFCC features only as a input to the model. For all these audio processing tasks, we've used python framework librosa. We've implemented and used 3 training methods, each defined by different loss function.
 
 \subsection*{Softmax with cross-entropy}
 
-We trained the first model using original training method, i.e. closed set classification trying to classify respective utterances to every speaker in the training dataset. The multiclass cross-entropy loss function on softmax activation of the last layer~(eq. \ref{eq:softmax}) has been optimized.
+We trained the first model using original training method, i.e. closed set classification trying to classify respective utterances to each speaker in the training dataset. The multiclass cross-entropy loss function on softmax activation of the last layer~(eq. \ref{eq:softmax}) has been optimized.
 
 \begin{equation} \label{eq:softmax}
 \mathcal{L}_{softmax} = \frac{1}{N} \sum - \textnormal{log} \left( 
@@ -21,7 +21,7 @@ We trained the first model using original training method, i.e. closed set class
 
 \pagebreak
 \noindent
-We trained the network using Adam optimizer with default parameters while it was seemingly converging and then tuned it using SGD with momentum $ 0.9 $ and small $ \eta $ (e.g. $ 1e^{-4} $). The training has been done on variable length utterances with minibatch size of 64 and it was simple and straight forward.
+We trained the network using Adam optimizer with default parameters while it was seemingly converging and then tuned it using SGD with momentum $ 0.9 $ and small $ \eta $ (e.g. $ 1e^{-4} $). The training has been done on variable length utterances with minibatch size of 64. We used a cross-validation set created from the training set to determine the convergence of the optimizer.
 
 \subsection*{Triplet margin loss -- direct optimization}
 
@@ -49,7 +49,7 @@ The third and the last loss function we tested was so called Angular~Softmax~los
 \frac{e^{\,\boldsymbol{x} \cdot \boldsymbol{W}_i^T + \boldsymbol{b}_i}}
 {\sum_{j} e^{\,\boldsymbol{x} \cdot \boldsymbol{W}_j^T + \boldsymbol{b}_j}} =
 \frac{e^{\norm{\boldsymbol{x}} \cdot \norm{\boldsymbol{W}_i} \textnormal{cos}(\theta_i)  + \boldsymbol{b}_i}}
-{\sum_{j} e^{\,\norm{\boldsymbol{x}} \norm{\boldsymbol{W}_j} \textnormal{cos}(\theta_j)  + \boldsymbol{b}_j}}
+{\sum_{j} e^{\norm{\boldsymbol{x}} \norm{\boldsymbol{W}_j} \textnormal{cos}(\theta_j)  + \boldsymbol{b}_j}}
 \end{equation}
 
 \medskip
@@ -91,6 +91,43 @@ The training process was not trivial in this case. We found out, that such restr
 
 \medskip
 \noindent
-Then we slowly moved the coeficients towards $ \alpha = \beta = 0.5 $ (1 epoch for every step of $ 0.1 $) and then we finally removed the helper softmax loss and trained only using A-softmax. We used the same stratedy as before, i.e. Adam to converge somewhere fast and then SGD with reasonably small $ \eta $ to settle down in the local minima more precisely.
+Then we slowly moved the coeficients towards $ \alpha = \beta = 0.5 $ (1 epoch for every step of $ 0.1 $) and then we finally removed the helper softmax loss and trained only using A-softmax until the convergence. We used the same strategy as before, i.e. Adam to converge fast somewhere and then SGD with reasonably small $ \eta $ to settle down in the local minima more precisely.
 
 \section{Results}
+
+The trained models were tested using mentioned cosine similarity metric on the testing dataset. The embeddings were computed for each utterance and then all embeddings were paired into a $ 4874 \times 4874 $ score matrix. Finally, the DET\footnote{Detection Error Tradeoff} curves were plotted and the scalar metric EER\footnote{Equal Error Rate} has been computed. This metric is a standard way to describe the performance of the binary hypothesis tests. It is very popular in evaluating biometric systems such as discussed speaker verification model. The metric represents the threshold for which the FPR\footnote{False Positive Ratio} and FNR\footnote{False Positive Ratio} values are equal. The threshold is not mean in an absolute way, but normalized into interval $ \langle 0, 1 \rangle $ in order to be invariant. Our results are summarized in the table~\ref{tab:eer}.
+
+\input{eer_table.tex}
+
+\medskip
+\noindent
+As can be seen, the triplet margin loss with naive sampling performed the worst given the scoring backend. It might definitely improve the performance of the softmax in multi-task training, but on its own it would require avanced sampling technique and also experimentation with the margin $ \alpha $. Also, the L2 distance on normalized vectors is still slightly different than the cosine distance used for scoring, so maybe exploiting our backend decision and using cosine distance in triplet loss would yield better results. However, to test this hypothesis is out of the scope of our work. On the other hand, the Angular Softmax loss function has gained the best performance. The power of the central softmax based loss with large number of classes combined with additional angular margin led to superior results.
+
+\medskip
+There is an open debate about whether to use only linearly activated layer or some non-linear activation on top of it as a embedding. In triplet margin loss the answer is clear, but in classification based embeddings we tried both variants and found interesting results. While the A-softmax with ReLU activation kept performed much worse, even worse than softmax, the plain softmax performed significantly better with ReLU than with ReLU removed. We suppose that the reason is that the ReLU discards information contained in the negative values. Therefore it is not propagated directly to the final minimized loss, so it can be expected that using the negative part would more likely confuse the results rather than improve them. But this explanation ostensibly doesn't apply for the A-softmax function. Interesting future work would be to test whether some other activations that keep also the negative part (e.g. tanh) would lead to even better results than classical ReLU, which is extensively used due to its great gradient properties, but those are not so significant after batch normalization anyway.
+
+\medskip
+Finally, we've also visualized the results in the form of DET~curves~(fig. \ref{fig:det}) and t-SNE~\footnote{https://towardsdatascience.com/an-introduction-to-t-sne-with-python-example-5a3a293108d1} reduced 512 dimensional space into 2 dimensional scatter plot maintaing the L2 distances \ref{fig:tsne}.
+
+\begin{figure}[h]
+\begin{center}
+	\begin{subfigure}[t]{7.5cm}
+		\resizebox{7.5cm}{!}{\includegraphics{det/softmax.eps}}
+		\caption{Softmax}
+	\end{subfigure}
+	\begin{subfigure}[t]{7.5cm}
+		\resizebox{7.5cm}{!}{\includegraphics{det/softmax-relu.eps}}
+		\caption{Softmax with ReLU}
+	\end{subfigure}
+	\begin{subfigure}[t]{7.5cm}
+		\resizebox{7.5cm}{!}{\includegraphics{det/A-softmax.eps}}
+		\caption{Angular Softmax}
+	\end{subfigure}
+	\begin{subfigure}[t]{7.5cm}
+		\resizebox{7.5cm}{!}{\includegraphics{det/triplet.eps}}
+		\caption{Triplet margin L2}
+	\end{subfigure}
+\end{center}
+\caption{DET curves}
+\label{fig:det}
+\end{figure}
