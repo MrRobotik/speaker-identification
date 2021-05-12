@@ -6,7 +6,7 @@ Goal of our work was to test different loss functions separately to see their po
 
 \subsection*{Implementation and dataset}
 
-We build the model using pytorch library in order to get more flexibility, despite the fact the model used in production is already implemented in popular C++ Kaldi library. We decided to use the smaller version of the new VoxCeleb~\cite{VoxCeleb} dataset, which contains of 148 642 utterances from 1211 speakers in training set, and 4874 utterances from 40 speakers in test set, all from YouTube videos. We preprocessed each utterance before the training step. We used single channel audio with 16kHz sampling rate as a raw input. Preemphasis with coeficient 0.97 has been applied and then the audio was divided into overlapping frames each of length of 25 milliseconds and with step of 15 milliseconds between adjacent frames. For each frame, the STFT\footnote{Short Time Fourier Transform} was computed and finally the 128-dimensional spectrogram was extracted using Mel frequency filter banks. In traditional approaches, the high correlation in this spectrogram was not undesirable, but in DNN approaches more dimensionality has been shown to yield better results~\cite{CNN_2016}. However, we used a decorrelated spectrogram -- the MFCC\footnote{https://haythamfayek.com/2016/04/21/speech-processing-for-machine-learning.html}, because in the original x-vector paper they used those. Initially we wanted to test both, but soon we realized that our hardware might not let us to do so, and we decided to use a 24-dimensional MFCC features only as a input to the model. For all these audio processing tasks, we've used python framework librosa. We've implemented and used 3 training methods, each defined by different loss function.
+We build the model using pytorch library in order to get more flexibility, despite the fact the model used in production is already implemented in popular C++ Kaldi library. We decided to use the smaller version of the new VoxCeleb~\cite{VoxCeleb} dataset, which contains of 148 642 utterances from 1211 speakers in training set, and 4874 utterances from 40 speakers in test set, all from YouTube videos. We preprocessed each utterance before the training step. We used single channel audio with 16kHz sampling rate as a raw input. Preemphasis with coeficient 0.97 has been applied and then the audio was divided into overlapping frames each of length of 25 milliseconds and with step of 15 milliseconds between adjacent frames. For each frame, the STFT\footnote{Short Time Fourier Transform} was computed and finally the 128-dimensional spectrogram was extracted using Mel frequency filter banks. In traditional approaches, the high correlation in this spectrogram was undesirable, but in DNN approaches more dimensionality has been shown to yield better results~\cite{CNN_2016}. However, we used a decorrelated spectrogram -- the MFCC\footnote{https://haythamfayek.com/2016/04/21/speech-processing-for-machine-learning.html}, because in the original x-vector paper they used those. Initially we wanted to test both, but soon we realized that our hardware might not let us to do so, and we decided to use a 24-dimensional MFCC features only as a input to the model. For all these audio processing tasks, we've used python framework librosa. We've implemented and used 3 training methods, each defined by different loss function.
 
 \subsection*{Softmax with cross-entropy}
 
@@ -14,21 +14,25 @@ We trained the first model using original training method, i.e. closed set class
 
 \begin{equation} \label{eq:softmax}
 \mathcal{L}_{softmax} = \frac{1}{N} \sum - \textnormal{log} \left( 
-\frac{e^{W_i^T \cdot x + b_i}}{\sum_{j} e^{W_j^T \cdot x + b_j}} 
+\frac{e^{\,\boldsymbol{x} \cdot \boldsymbol{W}_i^T + \boldsymbol{b}_i}}
+{\sum_{j} e^{\,\boldsymbol{x} \cdot \boldsymbol{W}_j^T + \boldsymbol{b}_j}} 
 \right)
 \end{equation}
 
 \pagebreak
 \noindent
-We trained the network using Adam optimizer with default parameters while it was seemingly converging and then tuned it using SGD with momentum $ 0.9 $ and small $ \eta $ (e.g. $ 1e^-4 $). The training process was simple and straight forward.
+We trained the network using Adam optimizer with default parameters while it was seemingly converging and then tuned it using SGD with momentum $ 0.9 $ and small $ \eta $ (e.g. $ 1e^{-4} $). The training has been done on variable length utterances with minibatch size of 64 and it was simple and straight forward.
 
 \subsection*{Triplet margin loss -- direct optimization}
 
-The second approach we tested was direct optimization using standard triplet margin loss (eq. \ref{eq:triplet}) with L2 distance, where $ A $, $ P $ and $ N $ are embeddings for anchor, positive (from the same speaker), and negative (from a different speaker) utterances respectively. The triplet loss is minimized, when for every speaker the intra-class distances are all smaller than inter-class distances by a margin $ \alpha $.
+The second approach we tested was direct optimization using standard triplet margin loss (eq. \ref{eq:triplet}) with L2 distance, where $ \boldsymbol{A} $, $ \boldsymbol{P} $ and $ \boldsymbol{N} $ are embedding vectors for anchor, positive (from the same speaker), and negative (from a different speaker) utterances respectively. The triplet loss is minimized, when for every speaker the intra-class distances are all smaller than inter-class distances by a margin of $ \alpha $.
 
 \begin{equation} \label{eq:triplet}
 \mathcal{L}_{triplet} = \frac{1}{N} \sum \textnormal{max}
-\left( \norm{A - P}^2 - \norm{A - N}^2 + \alpha, 0 \right)
+\left( 
+\norm{\boldsymbol{A} - \boldsymbol{P}}^2 - 
+\norm{\boldsymbol{A} - \boldsymbol{N}}^2 
++ \alpha, 0 \right)
 \end{equation}
 
 \noindent
@@ -39,16 +43,54 @@ In our work, we implemented naive sampling where all triplets were sampled rando
 
 \subsection*{Angular Softmax with cross-entropy}
 
-The third and the last loss function we tested was so called Angular~Softmax~loss~\cite{A_softmax_original} or A-softmax. It is a relatively recent approach to the problem of classic softmax activation used for embedding extraction. In classification using softmax, there is no direct way of maximizing the inter-class variability and minimizing the intra-class variablity, which is very desired for a good embedding model. The final cross-entropy loss is not forced to keep any margins, it only cares about classifying the samples into the classes correctly in a discreet sense. The angular softmax can be viewed as an enhanced softmax idea based on the geometric definition of the dot product, which implies the equivalence~(eq. \ref{eq:cosine_rule}), where $ \theta_i $ is the angle between the weights $ W_i $ and the input vector $ x $ in the hyperspace.
+The third and the last loss function we tested was so called Angular~Softmax~loss~\cite{A_softmax_original} or A-softmax. It is a relatively recent approach to the problem of classic softmax activation used for embedding extraction. In classification using softmax, there is no direct way of maximizing the inter-class variability and minimizing the intra-class variablity, which is very desired for a good embedding model. The final cross-entropy loss is not forced to keep any margins, it only cares about classifying the samples into the classes correctly in a discreet sense. The angular softmax can be viewed as an enhanced softmax idea based on the geometric definition of the dot product, which implies the equivalence~(eq. \ref{eq:cosine_rule}), where $ \theta_i $ is the angle between the class weights $ \boldsymbol{W}_i $ (column of the linear layer matrix for row vectors convention) and the input vector $ \boldsymbol{x} $.
 
 \begin{equation} \label{eq:cosine_rule}
-\frac{e^{W_i^T \cdot x + b_i}}{\sum_{j} e^{W_j^T \cdot x + b_j}} =
-\frac{e^{\norm{W_i} \norm{x} \textnormal{cos}(\theta_i)  + b_i}}
-{\sum_{j} e^{\norm{W_j} \norm{x} \textnormal{cos}(\theta_j)  + b_j}}
+\frac{e^{\,\boldsymbol{x} \cdot \boldsymbol{W}_i^T + \boldsymbol{b}_i}}
+{\sum_{j} e^{\,\boldsymbol{x} \cdot \boldsymbol{W}_j^T + \boldsymbol{b}_j}} =
+\frac{e^{\norm{\boldsymbol{x}} \cdot \norm{\boldsymbol{W}_i} \textnormal{cos}(\theta_i)  + \boldsymbol{b}_i}}
+{\sum_{j} e^{\,\norm{\boldsymbol{x}} \norm{\boldsymbol{W}_j} \textnormal{cos}(\theta_j)  + \boldsymbol{b}_j}}
 \end{equation}
 
 \medskip
 \noindent
-The main idea is tu multiply the angle $ \theta_i $, i.e. angle between $ x $ and weight vector of the ground-truth class the by some value $ m $. Because the cosine function is monotonically decreasing in interval $ \langle 0, \pi \rangle $, the relation $ \textnormal{cos}(\theta_1) > m \cdot \textnormal{cos}(\theta_1) > \textnormal{cos}(\theta_2) $ holds true in this interval. In~\cite{A_softmax_original} it is also shown that this new restriction creates margin between weights of different classes. This margin forces the model to learn more discriminative features, because it has to minimize the angles within classes and maximize angles between classes.
+The main idea is to multiply the angle $ \theta_i $, i.e. angle between $ x $ and weights of the ground-truth class by some value $ m $. Because the cosine function is monotonically decreasing in interval $ \langle 0, \pi \rangle $, the relation $ \textnormal{cos}(\theta_1) > m \cdot \textnormal{cos}(\theta_1) > \textnormal{cos}(\theta_2) $ holds true in this interval. In~\cite{A_softmax_original} it is also shown that this new restriction creates margin between weight vectors of different classes. This margin forces the model to learn more discriminative features, because it has to minimize the angles within classes and maximize angles between classes. Recently, there has more losses with such margins, e.g. Additive Angular Margin Loss \cite{arc_face} where $ m $ is incorporated using addition instead of multiplication, but in~\cite{A_softmax} they used the hyper-spherical loss based on multiplication for a speaker verification task, and so we did.
 
 \medskip
+We've implemented a linear layer without bias and with weight L2 normalization (as recommended). We used the value $ m = 3 $, which has been suggested in~\cite{A_softmax} to be the optimal. They also recommended the integral value of $ m $, so the multi-angle formula could be used to simplify backward gradient computations. In our case of $ m = 3 $, it can be simplified using the formula (eq. \ref{eq:multi_angle_3}). Finally, to remove restriction of $ \theta $ being in interval $ \langle 0, \frac{\pi}{m} \rangle $, the new function has been introduced to replace cosine (eq. \ref{eq:new_function}).
+
+\begin{equation} \label{eq:multi_angle_3}
+\textnormal{cos}(3\theta) = 
+4\textnormal{cos}(\theta)^3 - 3\textnormal{cos}(\theta) = 
+4 \left( \frac{\boldsymbol{x} \cdot \boldsymbol{W}}{\norm{\boldsymbol{x}}} \right) ^3 - 
+3 \left( \frac{\boldsymbol{x} \cdot \boldsymbol{W}}{\norm{\boldsymbol{x}}} \right)
+\end{equation}
+\begin{equation} \label{eq:new_function}
+\phi \left( \theta_i \right) = 
+(-1)^k \textnormal{cos} \left( m \theta_i \right) - 2k
+\end{equation}
+
+\medskip
+\noindent
+So the final A-softmax loss function can be formulated by an expression (eq. \ref{eq:A_softmax}).
+
+\begin{equation} \label{eq:A_softmax}
+\mathcal{L}_{A-softmax} = \frac{1}{N} \sum - \textnormal{log} \left( 
+\frac{e^{\norm{\boldsymbol{x}} \phi(\theta_i)}}
+{\sum_{j \neq i} e^{\,\boldsymbol{x} \cdot \boldsymbol{W}_j^T}}
+\right)
+\end{equation}
+
+\medskip
+\noindent
+The training process was not trivial in this case. We found out, that such restrictive loss metric is very prone to divergence at the beginning of the optimization (as also mentioned in~\cite{arc_face}). However, in~\cite{A_softmax} they didn't mention this problem, probably because they were able to use very large batches (1000) as they were not training the network on variable lenght utterances but only on chunks, and they also had better hardware than we did. To tackle the problem of the divergence, we trained our network with help of softmax activation combined with A-softmax (eq. \ref{eq:combined_loss}), where we initially started with $ \alpha = 0.2 $ and $ \beta = 0.8 $.
+
+\begin{equation} \label{eq:combined_loss}
+\mathcal{L} = \alpha \cdot \mathcal{L}_{A-softmax} + \beta \cdot \mathcal{L}_{softmax}
+\end{equation}
+
+\medskip
+\noindent
+Then we slowly moved the coeficients towards $ \alpha = \beta = 0.5 $ (1 epoch for every step of $ 0.1 $) and then we finally removed the helper softmax loss and trained only using A-softmax. We used the same stratedy as before, i.e. Adam to converge somewhere fast and then SGD with reasonably small $ \eta $ to settle down in the local minima more precisely.
+
+\section{Results}
