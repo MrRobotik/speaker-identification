@@ -2,7 +2,7 @@
 The x-vector architecture has significantly outperformed the traditional statistical approaches and is very popular model to the date, although it is not state of the art anymore. Besides different newer architectures, the original x-vector model performance was further improved using different training methods and loss functions. In~\cite{x_vectors_triplet}, they used multi-task training to train the model and had visible improvements in performance metrics compared with original training method. They enhanced cross-entropy loss from softmax activation with direct optimization on L2 distances between embeddings from hidden layer using triplet margin loss. They also used small neural network to extract more complex distance metric.
 
 \medskip
-Goal of our work was to test different loss functions separately to see their potential to train x-vector architecture and infere their contribution in multi-task losses. As a backend scoring metric, we used cosine similarity as a very strong and popular metric. Another popular backend in recent years is PLDA~\footnote{https://towardsdatascience.com/probabilistic-linear-discriminant-analysis-plda-explained-253b5effb96}, but lately it lost its popularity due to the increasing capabilities of DNN models. The main reason why we didn't choose PLDA is that it is a classifier and has hyperparameters, which might shadow the actual DNN model performance. 
+Goal of our work was to test different loss functions separately to see their potential to train x-vector architecture and infere their contribution in multi-task losses. As a backend scoring metric, we used cosine similarity as a very strong and popular metric. Another popular backend in recent years is PLDA~\footnote{https://towardsdatascience.com/probabilistic-linear-discriminant-analysis-plda-explained-253b5effb96}, but lately it lost its popularity due to the increasing capabilities of DNN models. The main reason why we didn't choose PLDA is that it is a classifier and has hyperparameters, which might shadow the actual DNN model performance.
 
 \subsection*{Implementation and dataset}
 
@@ -13,9 +13,9 @@ We build the model using pytorch library in order to get more flexibility, despi
 We trained the first model using original training method, i.e. closed set classification trying to classify respective utterances to each speaker in the training dataset. The multiclass cross-entropy loss function on softmax activation of the last layer~(eq. \ref{eq:softmax}) has been optimized.
 
 \begin{equation} \label{eq:softmax}
-\mathcal{L}_{softmax} = \frac{1}{N} \sum - \textnormal{log} \left( 
+\mathcal{L}_{softmax} = \frac{1}{N} \sum - \textnormal{log} \left(
 \frac{e^{\,\boldsymbol{x} \cdot \boldsymbol{W}_i^T + \boldsymbol{b}_i}}
-{\sum_{j} e^{\,\boldsymbol{x} \cdot \boldsymbol{W}_j^T + \boldsymbol{b}_j}} 
+{\sum_{j} e^{\,\boldsymbol{x} \cdot \boldsymbol{W}_j^T + \boldsymbol{b}_j}}
 \right)
 \end{equation}
 
@@ -29,9 +29,9 @@ The second approach we've tested is direct optimization using standard triplet m
 
 \begin{equation} \label{eq:triplet}
 \mathcal{L}_{triplet} = \frac{1}{N} \sum \textnormal{max}
-\left( 
-\norm{\boldsymbol{A} - \boldsymbol{P}}^2 - 
-\norm{\boldsymbol{A} - \boldsymbol{N}}^2 
+\left(
+\norm{\boldsymbol{A} - \boldsymbol{P}}^2 -
+\norm{\boldsymbol{A} - \boldsymbol{N}}^2
 + \alpha, 0 \right)
 \end{equation}
 
@@ -60,13 +60,13 @@ The main idea is to multiply the angle $ \theta_i $, i.e. angle between $ x $ an
 We've implemented a linear layer without 	bias and with weights L2 normalization (as recommended). We used the value $ m = 3 $, which has been suggested in~\cite{A_softmax} to be the optimal. They also recommended the integral value of $ m $, so the multi-angle formula could be used to simplify backward gradient computations. In our case of $ m = 3 $, it can be simplified using the formula (eq. \ref{eq:multi_angle_3}). Finally, to remove the restriction of $ \theta_i $ being in interval $ \langle 0, \frac{\pi}{m} \rangle $, the new function has been introduced to replace the cosine (eq. \ref{eq:new_function}).
 
 \begin{equation} \label{eq:multi_angle_3}
-\textnormal{cos}(3\theta) = 
-4\textnormal{cos}(\theta)^3 - 3\textnormal{cos}(\theta) = 
-4 \left( \frac{\boldsymbol{x} \cdot \boldsymbol{W}}{\norm{\boldsymbol{x}}} \right) ^3 - 
+\textnormal{cos}(3\theta) =
+4\textnormal{cos}(\theta)^3 - 3\textnormal{cos}(\theta) =
+4 \left( \frac{\boldsymbol{x} \cdot \boldsymbol{W}}{\norm{\boldsymbol{x}}} \right) ^3 -
 3 \left( \frac{\boldsymbol{x} \cdot \boldsymbol{W}}{\norm{\boldsymbol{x}}} \right)
 \end{equation}
 \begin{equation} \label{eq:new_function}
-\phi \left( \theta_i \right) = 
+\phi \left( \theta_i \right) =
 (-1)^k \textnormal{cos} \left( m \theta_i \right) - 2k
 \end{equation}
 
@@ -75,7 +75,7 @@ We've implemented a linear layer without 	bias and with weights L2 normalization
 Now the final A-softmax loss function can be formulated by an expression (eq. \ref{eq:A_softmax}).
 
 \begin{equation} \label{eq:A_softmax}
-\mathcal{L}_{A-softmax} = \frac{1}{N} \sum - \textnormal{log} \left( 
+\mathcal{L}_{A-softmax} = \frac{1}{N} \sum - \textnormal{log} \left(
 \frac{e^{\norm{\boldsymbol{x}} \phi(\theta_i)}}
 {\sum_{j \neq i} e^{\,\boldsymbol{x} \cdot \boldsymbol{W}_j^T}}
 \right)
@@ -107,7 +107,7 @@ As can be seen, the triplet margin loss with naive sampling performed the worst 
 There is an open debate about whether to use only linearly activated layer or with some non-linear activation on top of it as an embedding. In triplet margin loss the answer is clear, but in classification based embeddings we tried both variants and found interesting results. While the A-softmax with ReLU activation kept performed much worse, even worse than softmax, the plain softmax performed significantly better with ReLU than with ReLU removed. We suppose that the reason for this is that the ReLU discards information contained in the negative values. Therefore it is not propagated directly to the final minimized loss, so it can be expected that using the negative part would more likely confuse the results rather than improve them. But this explanation ostensibly doesn't apply for the A-softmax function. Interesting future work would be to test whether some other activations that keep also the negative part (e.g. tanh) would lead to even better results than classical ReLU, which is extensively used due to its great gradient properties, but those are not so significant after batch normalization anyway.
 
 \medskip
-Finally, we've also visualized the results in the form of DET~curves~(fig. \ref{fig:det}) and scatter~plots~\ref{fig:tsne} of the test utterances embeddings in 512 dimensional space reduced into 2 dimensions mantaining the L2 distances using t-SNE~\footnote{https://towardsdatascience.com/an-introduction-to-t-sne-with-python-example-5a3a293108d1} algorithm.
+Finally, we've also visualized the results in the form of DET~curves~(fig. \ref{fig:det}) and scatter~plots of the test utterances embeddings in 512 dimensional space reduced into 2 dimensions mantaining the L2 distances using t-SNE~\footnote{https://towardsdatascience.com/an-introduction-to-t-sne-with-python-example-5a3a293108d1} algorithm (fig. \ref{fig:tsne}).
 
 \begin{figure}[h]
 \begin{center}
@@ -130,4 +130,27 @@ Finally, we've also visualized the results in the form of DET~curves~(fig. \ref{
 \end{center}
 \caption{DET curves}
 \label{fig:det}
+\end{figure}
+
+\begin{figure}[h]
+\begin{center}
+	\begin{subfigure}[t]{7.5cm}
+		\resizebox{7.5cm}{!}{\includegraphics{tsne_embeds/embs-softmax_20-40.eps}}
+		\caption{Softmax}
+	\end{subfigure}
+	\begin{subfigure}[t]{7.5cm}
+		\resizebox{7.5cm}{!}{\includegraphics{tsne_embeds/embs-softmax-relu_20-40.eps}}
+		\caption{Softmax with ReLU}
+	\end{subfigure}
+	\begin{subfigure}[t]{7.5cm}
+		\resizebox{7.5cm}{!}{\includegraphics{tsne_embeds/embs-a_softmax_20-40.eps}}
+		\caption{Angular Softmax}
+	\end{subfigure}
+	\begin{subfigure}[t]{7.5cm}
+		\resizebox{7.5cm}{!}{\includegraphics{tsne_embeds/embs-triplet_20-40.eps}}
+		\caption{Triplet margin L2}
+	\end{subfigure}
+\end{center}
+\caption{Embeddings of same 20 speakers but produced with 4 different models}
+\label{fig:tsne}
 \end{figure}
