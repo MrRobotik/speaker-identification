@@ -1,7 +1,7 @@
 # Speaker identification
 <b>X-vector</b> DNN architecture for speech embeddings (512 dim. vector),<br> which can be used for speaker identification or verification.
 
-implemented in python3 using:
+Implemented in python3 using:
 * PyTorch for neural network building and training
 * librosa for audio manipulation and feature extraction
 * Bob for evaluation of biometric performance metrics
