@@ -3,9 +3,9 @@
 
 implemented in python3 using:
 * PyTorch for neural network building and training
-* librosa for audio manipulation and feature extraction.
+* librosa for audio manipulation and feature extraction
+* Bob for evaluation of biometric performance metric
 
-The Bob library is used to evaluate biometric performance metric such as EER.<br>
 The project consists of 6 mini-apps:
 * `extract_feats.py` which precomputes mel-spectrograms and MFCC's for each utterance
 * `train_nn_model.py` which trains the DNN model using selected loss function and optimizer
