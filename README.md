@@ -4,7 +4,7 @@
 implemented in python3 using:
 * PyTorch for neural network building and training
 * librosa for audio manipulation and feature extraction
-* Bob for evaluation of biometric performance metric
+* Bob for evaluation of biometric performance metrics
 
 The project consists of 6 mini-apps:
 * `extract_feats.py` which precomputes mel-spectrograms and MFCC's for each utterance
