@@ -100,6 +100,10 @@ class DemoApp(QApplication):
                     self.label.setStyleSheet('font-size: 20px; color: white; background-color: red')
                 
                 self.label.setText('Similarity: ' + result_num + '\n' + result_txt)
+                print('embedding 1:')
+                print(embedding1)
+                print('embedding 2:')
+                print(embedding2)
 
             except Exception as e:
                 print(e, file=sys.stderr)
